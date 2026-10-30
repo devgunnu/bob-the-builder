@@ -14,9 +14,13 @@ Everything a human or an AI agent needs to build Bob at Night Hack (2026-10-30).
    - [05-cdm-recheck-and-llm-free-generation.md](research/05-cdm-recheck-and-llm-free-generation.md): **corrects 02.** CDM = ScaleDown Constrained Decoding Models; the zero-LLM generation engine.
    - [06-true-synthetic-generation.md](research/06-true-synthetic-generation.md): **proposal.** New data = new inputs x a trustworthy oracle (the real product, a docs-compiled simulator, solvers). Superseded by 07.
    - [07-dataset-generators.md](research/07-dataset-generators.md): **proposal.** Eleven zero-LLM generators that synthesize fine-tuning rows for any corpus (task multiplier, corrupt-and-restore, verifiable constraints, conversations, abstention, preference pairs, few-shot expander, ...).
+   - [09-llm-architect-design.md](research/09-llm-architect-design.md): **current direction (v3).** LLM writes generators + verifiers per corpus, cheap LLM phrases rows, Jev/ScaleDown/code prove every row; fair 3-way eval.
    - [08-worked-example.md](research/08-worked-example.md): one real 60-word passage becomes about 570 rows, with exact counts, sample rows and evidence per technique.
 
-## TL;DR (v2.1: strictly zero-LLM, demo on a real product)
+## TL;DR
+**v3 update:** the zero-LLM rule is retired. See research/09: "LLM proposes, Bob proves". The reading and verification layers below are kept.
+
+### v2.1 summary (reading + verification layers)
 - **Read:** free filters, then Jev triages chunks and ScaleDown Extract pulls typed facts with verbatim source spans into a fact graph.
 - **Generate, with zero LLM tokens:** question programs compose new examples over the graph (multi-hop, comparisons, arithmetic, aggregation, procedures, true/false, multi-turn, reasoning traces). Answers are computed or copied, so they are correct by construction.
 - **Speak:** a grammar bank overgenerates phrasings, Jev picks the most natural; ScaleDown Summarize writes topic explanations and summaries.

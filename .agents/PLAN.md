@@ -1,4 +1,8 @@
-# Bob the Builder: Master Plan (v2.1, strictly zero-LLM)
+# Bob the Builder: Master Plan (v3: LLM proposes, Bob proves)
+
+> **v3 (current direction, see `research/09`): an LLM is back in, in a controlled role.** A strong Architect model writes generators + verifier code + tests once per corpus; a cheap Writer model phrases each row with answer slots locked; Jev, ScaleDown and code verify every row. Fair 3-way eval: base vs naive-LLM-data vs Bob-data on human-written questions. Sections below marked v2 still describe the reading/verification layers, which v3 keeps. The zero-LLM rule (D13) is retired.
+
+
 
 > Night Hack @ Founders, Inc., 2026-10-30. Build 5:00 to 10:00pm, live demo, no slides.
 > v2 replaces v1 after the founder's challenge: Bob now **generates** new data with no LLM. See `research/05` for the evidence.
