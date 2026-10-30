@@ -11,6 +11,7 @@ Everything a human or an AI agent needs to build Bob at Night Hack (2026-10-30).
    - [03-alternative-approaches.md](research/03-alternative-approaches.md): cheap selection, generation, QC, prior art, cost math.
    - [04-hackathon-stack-and-build-plan.md](research/04-hackathon-stack-and-build-plan.md): partner integrations, format libraries, stack, timeline, demo.
    - [05-cdm-recheck-and-llm-free-generation.md](research/05-cdm-recheck-and-llm-free-generation.md): **corrects 02.** CDM = ScaleDown Constrained Decoding Models; the zero-LLM generation engine.
+   - [06-true-synthetic-generation.md](research/06-true-synthetic-generation.md): **proposal.** New data = new inputs x a trustworthy oracle (the real product, a docs-compiled simulator, solvers). Flagship: Product-as-Oracle.
 
 ## TL;DR (v2.1: strictly zero-LLM, demo on a real product)
 - **Read:** free filters, then Jev triages chunks and ScaleDown Extract pulls typed facts with verbatim source spans into a fact graph.
