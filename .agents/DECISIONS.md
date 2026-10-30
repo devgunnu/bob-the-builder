@@ -49,7 +49,7 @@ Each entry: decision, why, what would change it.
 - **Trade-off:** less open-ended voice than an LLM; quality is capped by extraction accuracy; best on fact-dense corpora.
 - **LLM role:** none. Team chose strictly zero-LLM (D13).
 
-## D13. Strictly zero-LLM (team decision, 2026-10-30)
+## D13. [RETIRED by D16] Strictly zero-LLM (team decision, 2026-10-30)
 - No general-purpose generative LLM anywhere: writing, judging, certifying or fallback. Enforced by an allowlisted model gateway and a build-failing import test.
 - Jev access fallback is ScaleDown Classify (also a decision API), then an embedding classifier head. Never an LLM.
 - The Opus 5.5 figure is a computed estimate, never a real run.
@@ -63,8 +63,17 @@ Each entry: decision, why, what would change it.
 - Eleven generators (research/07). Core tonight: task multiplier, corrupt-and-restore, constraint compositor, knowledge composer, abstention, preference pairs.
 - ModelForge stays only a compatible export target (D9). Research/06's ModelForge-centred oracle idea is withdrawn.
 
+## D16. LLM proposes, Bob proves (v3, team decision)
+- **Why:** hand-written templates can't cover every use case and the output reads as templated. An LLM is needed for generality and natural language.
+- **Roles:** Architect (strong model, per corpus) writes the task taxonomy, extraction schema, generator programs, verifier code and unit tests (AutoIF-style). Writer (cheap model, per row) phrases rows with answer slots locked. Jev, ScaleDown and code verify every row.
+- **Kept:** fact graph, computed answers, abstention / false-premise families, programmatic defect injection for DPO, provenance, all verifiers.
+- **Eval:** human-written test set (incl. fake-feature questions) and a naive-LLM-data baseline, so results aren't circular.
+- Details: research/09.
+
 ## Open questions for the team
 1. Demo product: ModelForge (default) or another real product?
 2. Is the Photon iMessage prize worth one person's evening, or should D go all in on the web UI?
-3. ~~Strict zero-LLM?~~ Resolved: yes (D13).
+3. ~~Strict zero-LLM?~~ Reversed: LLM in controlled roles (D16).
+5. Writer: Claude Haiku 5.5 via API, or a local model on the GPU box?
+6. Architect: Opus 5.5 or Sonnet 5.5?
 4. Do we need non-English corpora (switch to potion-multilingual-128M)?
