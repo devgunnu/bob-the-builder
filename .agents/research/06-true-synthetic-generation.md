@@ -1,5 +1,7 @@
 # Research 06: True Synthetic Generation (beyond formatting the corpus)
 
+> **SUPERSEDED by [07](07-dataset-generators.md).** This version wrongly centred on ModelForge, which is only a compatible trainer. Keep only the general principle ("generate new inputs, construct verified answers").
+
 > 2026-10-30. The founder's bar: Bob must **generate** data, not just restructure what the corpus already says. Strictly zero-LLM still applies (D13).
 
 ## 1. The core idea in one line

@@ -58,11 +58,10 @@ Each entry: decision, why, what would change it.
 - Corpus: a real product's docs. Default proposal: ModelForge itself (dogfooding), see PLAN §9.
 - Close the loop live: Bob builds the dataset, ModelForge fine-tunes a small model on the GPU box, and the tuned model answers questions about the product that the base model gets wrong.
 
-## D15. [PROPOSED, awaiting team] Generate new inputs, never new answers
-- Bob invents situations the docs never mention (synthetic users, hardware, configs, broken inputs, goals) and gets each answer from a non-LLM oracle: the real product executed, a simulator compiled from the docs, a solver/planner, or the fact graph.
-- Flagship: Product-as-Oracle with a ModelForge adapter (synthetic `HardwareSpecs` -> real `RecommendationEngine.recommend`; mutated datasets -> real validation errors).
-- Turns the demo into a measured benchmark: tuned vs base model accuracy against the real product on held-out invented configs.
-- Details and ranking: research/06. PLAN.md will be updated once the team picks the ideas.
+## D15. [PROPOSED, awaiting team] Generator library for fine-tuning rows
+- Bob synthesizes dataset rows for any corpus with zero LLM: knowledge from the fact graph, language from CDMs + grammars + deterministic transforms, judgement from Jev + verifiers.
+- Eleven generators (research/07). Core tonight: task multiplier, corrupt-and-restore, constraint compositor, knowledge composer, abstention, preference pairs.
+- ModelForge stays only a compatible export target (D9). Research/06's ModelForge-centred oracle idea is withdrawn.
 
 ## Open questions for the team
 1. Demo product: ModelForge (default) or another real product?
