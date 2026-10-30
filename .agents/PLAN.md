@@ -1,4 +1,4 @@
-# Bob the Builder: Master Plan (v2, zero-LLM engine)
+# Bob the Builder: Master Plan (v2.1, strictly zero-LLM)
 
 > Night Hack @ Founders, Inc., 2026-10-30. Build 5:00 to 10:00pm, live demo, no slides.
 > v2 replaces v1 after the founder's challenge: Bob now **generates** new data with no LLM. See `research/05` for the evidence.
@@ -15,7 +15,7 @@ Demo headline: *"5,000 new training rows, multi-hop questions, computed answers,
 |---|---|---|
 | Jev classifies chunks | Keep | **Keep**, plus ranking, verification and phrase decoding |
 | CDMs generate | Reworded (wrong term researched) | **Keep as intended.** CDM = ScaleDown **Constrained Decoding Models**: Extract builds the fact graph, Summarize writes constrained prose |
-| LLM writer | Core | **Optional polish tier, off by default**; also the cost baseline |
+| LLM writer | Core | **Removed.** Strictly zero-LLM (team decision). LLMs appear only as the *estimated* cost baseline; none is ever called |
 
 ## 3. Architecture
 
@@ -32,11 +32,12 @@ Demo headline: *"5,000 new training rows, multi-hop questions, computed answers,
   7 REALIZE  (code + CDM) grammar bank -> many surface forms; Summarize for long answers
   8 RANK     (Jev)        Choice: most natural candidate; Noul: fluent? answerable alone?
   9 VERIFY                span check, Jev "supported?", dedup, decontam, PII
- 10 CERTIFY               sampled check -> pass rate ± Wilson CI
+ 10 CERTIFY               re-verify 5% sample (spans, recompute, Jev) + human spot-checks -> pass rate ± CI
  11 EXPORT                canonical rows -> presets -> JSONL/JSON/CSV/Parquet/Arrow/Avro/JSONB(.sql)
                           + bob_manifest.json (+ optional ModelForge validate)
 
-  optional: POLISH tier (local vLLM or Haiku 5.5) rewrites top N%, off by default
+  ZERO-LLM RULE: only Jev, ScaleDown CDMs and static embeddings may be called.
+  One allowlisted call_model() gateway; the "LLM tokens: 0" meter reads its ledger.
 ```
 
 ### Question programs (stage 6)
@@ -93,7 +94,7 @@ ModelForge rules still apply: canonical columns only, identical row types, one f
 Python package `bob` (3.12+), never imports ModelForge; integrates through files + `bob_manifest.json` + optional `POST /api/datasets/validate`.
 
 ## 7. Stack and layout
-FastAPI + asyncio pipeline, Convex for live progress and file links, Vite + React UI, Photon Spectrum sidecar for iMessage. GPU box: embeddings + optional polish tier.
+FastAPI + asyncio pipeline, Convex for live progress and file links, Vite + React UI, Photon Spectrum sidecar for iMessage. GPU box: embeddings, and fine-tuning the demo model with ModelForge.
 
 ```
 bob/
@@ -103,7 +104,7 @@ bob/
             graph.py                     # facts, entity resolution, units, confidence
             programs/                    # one module per program family
             realize/ grammar/*.yaml realizer.py inflect.py
-            rank.py verify.py certify.py cost.py polish.py(optional)
+            rank.py verify.py certify.py cost.py models_allowlist.py
   export/ presets.py formats.py jsonb_sql.py manifest.py modelforge.py
 web/  convex/  imessage/  demo/  tests/
 ```
@@ -125,27 +126,36 @@ Roles (2 people: A+B and C+D):
 | **8:00 CUT LINE 1** | Docs -> fact graph -> 5+ program types -> ranked rows -> JSONL + Parquet in the UI with provenance and cost. Drop Avro/JSONB/multi-turn/Photon if behind. | | | |
 | 8:00-9:00 | corroboration scores, "why dropped" | multi-turn walks, program coverage sampler | grammar bank v2 (20+ per program), certificate | **fact graph visual** (click a row, see its path light up), Opus cost comparison, iMessage reply; backup video |
 | **9:00 FREEZE** | Bug fixes only | | | |
-| 9:00-9:30 | Stretch: Jev phrase-decoding paraphraser, or a live ModelForge run | | | |
+| 8:00-9:00 (B, in parallel) | | Kick off the **ModelForge fine-tune** on the GPU box with the first full dataset; build the 5-question base-vs-tuned eval | | |
+| 9:00-9:30 | Stretch: Jev phrase-decoding paraphraser; record base-vs-tuned clip for the backup video | | | |
 | 9:30-10:00 | Rehearse 3x, warm caches, README, push | | | |
 
 Grammar bank tip: writing phrasings is the most parallel, lowest-risk work. Anyone who is blocked writes grammar.
 
-## 9. Demo script (2 minutes)
-1. **0:00 Hook.** "Every synthetic data tool is an LLM rewriting your docs. Bob uses zero LLM tokens, and its answers are more trustworthy."
-2. **0:15 Text it.** A judge texts Bob a docs URL. "On it."
-3. **0:30 Read.** UI: 15 pages, 240 chunks, Jev drops boilerplate, Extract pulls 1,800 facts with source spans. The fact graph grows on screen.
-4. **0:55 Compose.** Rows stream in. Click a multi-hop row: its path lights up across three documents, with a computed answer and a reasoning trace. Show a DPO pair whose rejected answer swapped one value.
-5. **1:20 Ship.** Parquet, ModelForge JSONL, Postgres JSONB. Meter: "$0.04. Opus 5.5: $6.90. LLM tokens: 0."
-6. **1:40 Phone buzzes.** "1,000 rows, link attached."
-7. **1:55 Close.** "Your documents, compiled into training data."
+## 9. Demo: a real product, end to end (2 minutes)
+
+**Corpus:** a real product's docs. Default proposal: **ModelForge itself** (its DEVELOPER_GUIDE, web Docs screen, code docstrings, CLI help, plus anything on its site). It's ours, it's real, and it closes the loop: Bob builds the data, ModelForge trains on it. If the team picks another product, keep the same script.
+
+**Before the demo (by 9:00):** run the full job once, fine-tune a small base model (0.5B to 1.5B, LoRA via ModelForge on the GPU box), and save a 5-question eval where the base model is wrong and the tuned model is right. Keep both models loaded.
+
+1. **0:00 Hook.** "Every synthetic data tool is an LLM rewriting your docs. Bob uses zero LLM tokens, and every answer is computed from the source."
+2. **0:15 Text it.** A judge texts Bob the product's docs URL. "On it."
+3. **0:30 Read.** UI: pages crawled, Jev drops boilerplate, Extract pulls facts with source spans, and the fact graph grows on screen.
+4. **0:55 Compose.** Rows stream in. Click a multi-hop row: its path lights up across three docs, with a computed answer and a reasoning trace. Show a DPO pair whose rejected answer swapped one value.
+5. **1:15 Ship.** One click: ModelForge JSONL + Parquet + Postgres JSONB. Meter: "$0.04 spent. Opus 5.5 estimate: $6.90. **LLM tokens: 0**" (read from the gateway ledger).
+6. **1:30 Prove it.** Side by side: base model vs model fine-tuned in ModelForge on Bob's data, asked a question about the product. Base model guesses; tuned model answers correctly and cites the step.
+7. **1:50 Phone buzzes.** "1,000 rows, link attached."
+8. **1:55 Close.** "Your docs, compiled into a model that knows your product. No LLM touched the data."
+
+Keep a pre-run job in a second tab and the backup video ready.
 
 ## 10. Pre-event checklist
 - [ ] ScaleDown account (50M free tokens), key, one Extract + one Summarize call; confirm `api.scaledown.xyz` request shape and output caps.
 - [ ] Jev via OpenRouter Decisions API (`POST /api/alpha/decisions`) working; confirm model ID.
 - [ ] Photon line provisioned; Firecrawl key; Convex project.
 - [ ] `pip install` pyarrow fastavro orjson datasketch model2vec scikit-learn networkx pint inflect pymupdf python-docx trafilatura psycopg[binary] fastapi uvicorn httpx firecrawl convex.
-- [ ] Pick a **fact-dense** demo corpus (API docs, product manual, policy handbook); pre-crawl to `demo/`.
-- [ ] Optional: vLLM on GPU box for the polish tier.
+- [ ] Confirm the demo product (default: ModelForge) and gather its docs into `demo/` (crawl the site if it has one, plus repo docs).
+- [ ] ModelForge installed on the GPU box; a small base model (0.5B to 1.5B) downloaded; one throwaway LoRA run to confirm it trains in a few minutes.
 
 ## 11. Risks
 
@@ -158,9 +168,9 @@ Grammar bank tip: writing phrasings is the most parallel, lowest-risk work. Anyo
 | ScaleDown or Jev access / request format | Working calls first; cache everything to disk; replay mode. Jev fallback: ScaleDown Classify (same Decisions API). |
 | Summarize output cap and weak query focus | Use it for topic explanations and summaries only; keep factual answers programmatic. |
 | Wifi / rate limits | Disk cache, replay, semaphores, hotspot, backup video. |
-| Scope creep | Freeze at 9:00; multi-turn, Avro, JSONB, Photon, polish tier are toggles. |
+| Scope creep | Freeze at 9:00; multi-turn, Avro, JSONB, Photon, fine-tune loop are toggles. |
 
 ## 12. Prize targets
-1. **Anthropic top 3**: novelty ("zero-LLM data generation") plus the team building it with Claude Code. Note: v2 no longer uses Claude in the pipeline; the optional polish tier can use Haiku 5.5.
+1. **Anthropic top 3**: novelty ("zero-LLM data generation") plus the team building it with Claude Code. The pipeline uses no Claude (or any LLM) by design; Claude Code is the team's build tool.
 2. **Photon iMessage** ($1k): text a URL, get a dataset.
 3. Name Firecrawl, Convex, ScaleDown, TypeSafe in the demo.

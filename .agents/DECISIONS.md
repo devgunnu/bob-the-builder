@@ -36,7 +36,7 @@ Each entry: decision, why, what would change it.
 - ModelForge quirks handled in presets: summarization uses prompt/completion; extractive QA folds into instruction following; one file per folder; no extra columns.
 
 ## D10. Partner tech only where it earns its place
-- Firecrawl (URL ingest), Convex (live progress + public file links), Photon (text a URL, get a dataset), Anthropic (writer + judge). Skip Mercury (banking), HeyPCB, Nebula.
+- Firecrawl (URL ingest), Convex (live progress + public file links), Photon (text a URL, get a dataset). Anthropic: no pipeline role under D13 (Claude Code is the build tool). Skip Mercury (banking), HeyPCB, Nebula.
 
 ## D11. Dropped
 - JEPA / LLM-JEPA: a training objective, not usable tonight.
@@ -47,10 +47,19 @@ Each entry: decision, why, what would change it.
 ## D12. Zero-LLM generation engine (v2)
 - **Why:** the founder wants generation, not reformatting, without LLMs. Extract, Compose, Realize, Rank produces new multi-hop, computed, reasoning-trace and hard-negative rows that appear nowhere in the source, and answers are correct by construction.
 - **Trade-off:** less open-ended voice than an LLM; quality is capped by extraction accuracy; best on fact-dense corpora.
-- **LLM role:** optional off-by-default polish tier, and the cost baseline.
+- **LLM role:** none. Team chose strictly zero-LLM (D13).
+
+## D13. Strictly zero-LLM (team decision, 2026-10-30)
+- No general-purpose generative LLM anywhere: writing, judging, certifying or fallback. Enforced by an allowlisted model gateway and a build-failing import test.
+- Jev access fallback is ScaleDown Classify (also a decision API), then an embedding classifier head. Never an LLM.
+- The Opus 5.5 figure is a computed estimate, never a real run.
+
+## D14. Demo on a real product, end to end
+- Corpus: a real product's docs. Default proposal: ModelForge itself (dogfooding), see PLAN §9.
+- Close the loop live: Bob builds the dataset, ModelForge fine-tunes a small model on the GPU box, and the tuned model answers questions about the product that the base model gets wrong.
 
 ## Open questions for the team
-1. Demo corpus: which docs site or file set will judges care about most?
+1. Demo product: ModelForge (default) or another real product?
 2. Is the Photon iMessage prize worth one person's evening, or should D go all in on the web UI?
-3. Strict zero-LLM, or keep the optional polish tier available?
+3. ~~Strict zero-LLM?~~ Resolved: yes (D13).
 4. Do we need non-English corpora (switch to potion-multilingual-128M)?
