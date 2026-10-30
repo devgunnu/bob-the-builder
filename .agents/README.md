@@ -5,6 +5,7 @@ Everything a human or an AI agent needs to build Bob at Night Hack (2026-10-30).
 1. **[PLAN.md](PLAN.md)**: pitch, architecture, cost model, build schedule, demo script, checklist, risks.
 2. **[CONTRACTS.md](CONTRACTS.md)**: data models, stage signatures, Jev questions, writer interface, presets, manifest, API, CLI. Lock before coding.
 3. **[DECISIONS.md](DECISIONS.md)**: why each choice was made, fallbacks, open questions.
+   - **[ASSESSMENT.md](ASSESSMENT.md)**: honest verdict on whether Bob is impressive enough, and what to change.
 4. **research/**: the raw reports the plan was compiled from.
    - [01-modelforge-integration.md](research/01-modelforge-integration.md): exact formats, schemas and quirks of ModelForge.
    - [02-jev-cdm-validation.md](research/02-jev-cdm-validation.md): what Jev and Constrained Decision Models are, and where they fit.
