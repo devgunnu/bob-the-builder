@@ -13,6 +13,7 @@ Everything a human or an AI agent needs to build Bob at Night Hack (2026-10-30).
    - [05-cdm-recheck-and-llm-free-generation.md](research/05-cdm-recheck-and-llm-free-generation.md): **corrects 02.** CDM = ScaleDown Constrained Decoding Models; the zero-LLM generation engine.
    - [06-true-synthetic-generation.md](research/06-true-synthetic-generation.md): **proposal.** New data = new inputs x a trustworthy oracle (the real product, a docs-compiled simulator, solvers). Superseded by 07.
    - [07-dataset-generators.md](research/07-dataset-generators.md): **proposal.** Eleven zero-LLM generators that synthesize fine-tuning rows for any corpus (task multiplier, corrupt-and-restore, verifiable constraints, conversations, abstention, preference pairs, few-shot expander, ...).
+   - [08-worked-example.md](research/08-worked-example.md): one real 60-word passage becomes about 570 rows, with exact counts, sample rows and evidence per technique.
 
 ## TL;DR (v2.1: strictly zero-LLM, demo on a real product)
 - **Read:** free filters, then Jev triages chunks and ScaleDown Extract pulls typed facts with verbatim source spans into a fact graph.
