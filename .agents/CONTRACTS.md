@@ -24,7 +24,7 @@ class Chunk(BaseModel):
 class Example(BaseModel):                    # the canonical row; every export is a projection
     id: str
     kind: Literal["sft", "dpo"]
-    tier: Literal["program", "summarize", "decoded", "polish"]   # polish = optional LLM tier
+    tier: Literal["program", "summarize", "decoded"]
     program: str                             # lookup | inverse | multi_hop | compare | ... | explain_topic
     task_type: str                           # qa | instruction | howto | definition | ...
     reasoning: str | None = None             # CoT trace rendered from the graph path
@@ -43,7 +43,7 @@ class Example(BaseModel):                    # the canonical row; every export i
     signal: float
     faithfulness_p: float                    # Jev "supported?" probability
     groundedness_cos: float
-    writer: str                              # "grammar+jev" | "scaledown-summarize" | "polish:<model>"
+    writer: str                              # "grammar+jev" | "scaledown-summarize" | "jev-decoded"
     cost_usd: float
 
 class Job(BaseModel):
@@ -72,7 +72,6 @@ def compose(graph: FactGraph, n: int, mix: dict[str, float]) -> list[Draft]   # 
 def realize(drafts: list[Draft]) -> list[Candidates]                      # grammar bank
 async def rank(cands: list[Candidates]) -> list[Example]                  # Jev Choice
 async def explain_topics(clusters, n: int) -> list[Example]               # ScaleDown Summarize
-async def polish(examples, frac: float) -> list[Example]                  # OPTIONAL, off by default
 async def verify(examples: list[Example], chunks: dict[str, Chunk]) -> list[Example]
 async def certify(examples: list[Example], sample_frac=0.05) -> dict
 def export(examples: list[Example], preset: str, formats: list[str], out_dir: Path) -> dict[str, Path]
@@ -109,17 +108,18 @@ Preference judge: `Choice` over `response_one_is_better`, `response_two_is_bette
 Signal score (starting point, tune on hand labels):
 `signal = useful * (density / 4) * (1 - boilerplate) * (task_type != not_useful)`; drop if `pii > 0.5` or `injection > 0.5` (unless user opts in).
 
-## 4. Optional polish tier (`bob/pipeline/polish.py`, off by default)
+## 4. Zero-LLM rule (enforced)
 
-```python
-class Writer(Protocol):
-    name: str
-    price_in: float; price_out: float        # $ per token, 0 for local
-    async def complete_json(self, system: str, user: str, schema: dict) -> tuple[dict, Usage]
-```
-Backends: `VLLMWriter` (OpenAI-compatible base_url on the GPU box), `AnthropicWriter` (Haiku 5.5, tool use / structured output), `TemplateWriter` (no LLM).
+No general-purpose generative LLM is called anywhere in the pipeline: not for writing, judging, certifying, or fallbacks.
 
-Only used when the user opts in. Rewrites the top N% of rows for voice; must not change computed answers (re-verify after).
+Allowed model calls (allowlist in `bob/pipeline/models_allowlist.py`):
+- TypeSafe Jev (decisions)
+- ScaleDown Extract, Summarize, Classify, Compress (constrained decoding)
+- Model2Vec / static embeddings (no generation)
+
+Every outbound model call goes through one `call_model(name, ...)` that rejects anything off the allowlist and logs tokens. The UI shows "LLM tokens: 0" from that ledger, not a hard-coded number. A unit test fails the build if any module imports `anthropic`, `openai`, `vllm`, or `transformers` generation APIs.
+
+Certificate without an LLM judge: for a random 5% sample, re-check (a) every fact's span is verbatim in its chunk, (b) recomputed answers match, (c) Jev `supported` and `answerable` pass, and (d) a human spot-check panel in the UI (thumbs up/down) during the demo. Report pass rate ± Wilson 95% CI.
 
 Banned phrasing in generated prompts (regex reject): "according to the (text|passage|document)", "in this (document|passage)", "the author".
 
@@ -168,7 +168,7 @@ ModelForge presets must: emit only those columns, identical types in every row, 
 ## 8. CLI
 ```
 bob build ./docs --goal "support agent for Acme" --n 500 --kind both \
-  --preset modelforge-sft --format jsonl,parquet --writer vllm \
+  --preset modelforge-sft --format jsonl,parquet \
   [--validate-with-modelforge http://localhost:8000 TOKEN] [--replay]
 ```
 
