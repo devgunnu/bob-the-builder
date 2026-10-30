@@ -1,196 +1,166 @@
-# Bob the Builder: Master Plan
+# Bob the Builder: Master Plan (v2, zero-LLM engine)
 
 > Night Hack @ Founders, Inc., 2026-10-30. Build 5:00 to 10:00pm, live demo, no slides.
-> Compiled from four research agents (see `research/`). This is the single source of truth for the build; `CONTRACTS.md` holds the interfaces, `DECISIONS.md` holds the reasoning.
+> v2 replaces v1 after the founder's challenge: Bob now **generates** new data with no LLM. See `research/05` for the evidence.
+> `CONTRACTS.md` holds the interfaces; `DECISIONS.md` holds the reasoning.
 
 ## 1. One-line pitch
-**Bob turns any corpus into a premium, fully formatted fine-tuning dataset for cents: System 1 models decide what matters, a tiny model writes, System 1 verifies, and every row ships with provenance and a calibrated faithfulness score.**
+**Bob compiles your documents into a fact graph and programs brand-new training data from it, with zero LLM tokens. Small constrained models read and phrase; code computes the answers, so every row is correct by construction and traceable to its source.**
 
-Demo headline: *"2,500 training rows from a 1M-token corpus for about 40 cents (about 13 cents on our own GPU). The same job with Opus 5.5 costs about $35."*
+Demo headline: *"5,000 new training rows, multi-hop questions, computed answers, reasoning traces and hard negatives, for about 40 cents (free on ScaleDown's starter tokens). The same job with Opus 5.5: about $70. LLM tokens used: 0."*
 
-## 2. What changed from the original hypothesis
+## 2. How we got here
 
-| Original | Verdict | Why (details in research/02) |
+| Idea | v1 | v2 |
 |---|---|---|
-| Jev classifies chunks as useful or not | **Keep, and expand** | Jev (TypeSafe's System 1 decision model) is built for exactly this. $0.042 per M input tokens, output free, about 200 to 300 ms. One call answers 5 or 6 questions at once. |
-| CDMs generate the dataset | **Reword** | Constrained Decision Models (Jev, Cloudflare Clef, etc.) only return probabilities over options you define. They cannot write text. They *can* select sentences, route templates, verify answers, and judge preference pairs, which is where most of the quality comes from. |
-| (new) Something has to write | **Add a tiny writer** | Templates ($0), a local model on our GPU box ($0 marginal), or Claude Haiku 5.5 ($0.10 / $0.50 per M). The writer only writes short instructions in the default mode (Humpback), keeping output tokens minimal. |
-
-The idea is still "no heavy LLMs". It is now defensible: heavy models never touch the data, and the light models only do the jobs they are good at.
+| Jev classifies chunks | Keep | **Keep**, plus ranking, verification and phrase decoding |
+| CDMs generate | Reworded (wrong term researched) | **Keep as intended.** CDM = ScaleDown **Constrained Decoding Models**: Extract builds the fact graph, Summarize writes constrained prose |
+| LLM writer | Core | **Optional polish tier, off by default**; also the cost baseline |
 
 ## 3. Architecture
 
 ```
-          INPUT                                   COST
-  files (pdf/docx/md/txt/csv/json) | URL (Firecrawl)
-                 │
-  1. INGEST + CHUNK   heading-aware, 300-500 tok; CSV -> row groups     $0
-                 │
-  2. CHEAP FILTERS    Gopher/C4/FineWeb heuristics (relaxed for PDFs)   $0   drops ~30-60%
-                 │    MinHash dedup (datasketch)                        $0
-  3. EMBED            potion-base-8M (CPU) or bge on GPU box            $0
-                 │    semantic dedup (cos > 0.95 within cluster)        $0   drops ~10-30%
-  4. JEV DECIDE       one call per chunk, 6 questions:                  ~$0.06 / 1M-tok corpus
-                 │      useful (Noul), density (Score), task type (Choice),
-                 │      boilerplate (Noul), PII (Noul), injection (Noul)
-  5. SELECT           signal = f(jev, density, heuristics);
-                 │    k-means (k≈√N), per-cluster quota under user BUDGET  $0
-  6. WRITE (router)   T0 extractive/template: Jev Choice picks sentence/template   $0
-                 │    T1 Humpback (default): chunk = answer, writer makes instruction
-                 │    T2 grounded QA / assistant rewrite for top ~20%
-                 │    DPO: rejected = free perturbation or no-context answer
-                 │    writer backends: local vLLM | Haiku 5.5 | Mercury (optional)
-  7. VERIFY           Jev Noul: supported? answerable alone?            ~$0.07
-                 │    cosine groundedness, regex quality, output dedup, PII scrub
-                 │    -> every row gets faithfulness_p; drop below threshold
-  8. CERTIFY          sampled judge (5-10%) -> pass rate ± Wilson 95% CI
-                 │
-  9. EXPORT           canonical rows -> preset (field mapping) -> format writer
-                      JSONL, JSON, CSV, Parquet, Avro, Arrow, Postgres JSONB (.sql)
-                      + bob_manifest.json (+ optional ModelForge validate)
+  files | URL (Firecrawl)
+     │
+  1 INGEST + CHUNK        heading-aware, 300-500 tok, CSV/tables -> rows         $0
+  2 FREE FILTERS          heuristics + MinHash + embeddings + semantic dedup   $0
+  3 TRIAGE   (Jev)        useful / density / content type / boilerplate / PII / injection
+  4 EXTRACT  (ScaleDown)  typed facts with confidence + verbatim source spans
+  5 FACT GRAPH            entity resolution, unit normalization, cross-chunk merge,
+                          fact confidence = extract conf x span check x corroboration
+  6 COMPOSE  (code)       question programs over the graph; answers COMPUTED
+  7 REALIZE  (code + CDM) grammar bank -> many surface forms; Summarize for long answers
+  8 RANK     (Jev)        Choice: most natural candidate; Noul: fluent? answerable alone?
+  9 VERIFY                span check, Jev "supported?", dedup, decontam, PII
+ 10 CERTIFY               sampled check -> pass rate ± Wilson CI
+ 11 EXPORT                canonical rows -> presets -> JSONL/JSON/CSV/Parquet/Arrow/Avro/JSONB(.sql)
+                          + bob_manifest.json (+ optional ModelForge validate)
+
+  optional: POLISH tier (local vLLM or Haiku 5.5) rewrites top N%, off by default
 ```
 
-### Why each stage earns its place
-- Stages 2 and 3 are free and remove most of the junk, so paid calls only see good chunks.
-- Stage 4 is where Jev shines: calibrated, cheap, structured. Six questions in one call cost about the same as one.
-- Stage 6 Humpback keeps the writer's output to about 60 tokens per example (output tokens are about 95% of LLM cost).
-- Stage 7 turns "cheap" into "trustworthy". It also catches writer hallucinations, which is why a small or diffusion model is safe to use.
+### Question programs (stage 6)
+Each program takes graph nodes and returns `(question_slots, answer, reasoning_path, provenance)`.
 
-## 4. Cost model (1M-token corpus to 2,000 SFT + 500 DPO rows)
+| Program | Example | Answer |
+|---|---|---|
+| lookup | What is the default timeout of the ingest service? | copied value |
+| inverse | Which service listens on port 8080? | graph query |
+| multi-hop | What is the timeout of the service that the API gateway depends on? | 2-hop join |
+| compare | Which is faster to restore, plan A or plan B, and by how much? | computed difference |
+| convert | How many minutes is the 5,400 s retention window? | computed |
+| aggregate | How many endpoints require admin scope? List them. | count + list |
+| superlative | Which region has the highest storage cost? | argmax |
+| procedure | How do I rotate an API key? / What comes after step 3? | ordered steps |
+| definition | What is a tenant? | definition span |
+| causal / conditional | What happens if the quota is exceeded? | effect span |
+| true/false + fix | True or false: X defaults to 10. | false, it's 30 (source) |
+| multi-turn | 3 to 5 turn walk across a graph neighbourhood | chat rows |
+| CoT | any multi-hop/compute program | step-by-step trace from the path |
+| explain-topic | Explain how billing works. | Summarize over the cluster's chunks |
+| summarization | Summarize this section in 2 sentences. | Summarize |
 
-| Step | Bob (Haiku 5.5 writer) | Bob (GPU box writer) | Naive (Opus 5.5) |
-|---|---|---|---|
-| Classify (Jev, about 2,500 chunks x 600 tok) | $0.06 | $0.06 | (n/a, LLM reads everything) |
-| Write 2,000 SFT (Humpback) | $0.18 | $0 | $16.80 |
-| Write 500 DPO rejected | $0.07 | $0 | $4.20 |
-| Verify (Jev, 2,500 rows x about 860 tok) | $0.09 | $0.09 | $14 (Opus judge) |
-| **Total** | **≈ $0.40** | **≈ $0.15** | **≈ $35** |
+DPO for free: rejected = the same program run on a perturbed fact (sibling value, wrong hop, off-by-one step), with a `rejection_strategy` label.
 
-Prices: Jev $0.042 / M input; Haiku 5.5 $0.10 / $0.50 per M (batch halves it); Opus 5.5 $4 / $20. Show the Batch toggle as "production mode".
+### Why this impresses
+- New data: multi-hop and computed questions exist nowhere in the source.
+- Correct by construction: answers come from code and verbatim spans, not sampling.
+- Reasoning traces and verifiable answers (usable for RLVR later) with no LLM.
+- Full provenance per row: every fact links to the character span it came from.
 
-Verify all prices in the first 30 minutes (research agents could not reach some vendor pages).
+## 4. Cost model (1M-token corpus, about 5,000 rows)
+
+| Step | Cost |
+|---|---|
+| Jev triage | about $0.04 |
+| ScaleDown Extract | about $0.03 |
+| ScaleDown Summarize (cluster explanations) | about $0.04 |
+| Jev ranking + verification | about $0.32 |
+| **Total** | **about $0.43** (about $0 under ScaleDown's 50M free tokens) |
+| LLM tokens | **0** |
+| Opus 5.5 generate + judge baseline | about $70 |
+
+Prices: Jev $0.042/M input; ScaleDown $0.04/M input, output free. Verify at 5:00pm.
 
 ## 5. Formats and presets
+Unchanged from v1 (see `CONTRACTS.md` §5): JSONL, JSON (plain array), CSV, Parquet, Arrow, Avro, Postgres JSONB `.sql`, optional HF Hub. Presets: ModelForge SFT / chat / DPO / QA fallback, OpenAI chat / DPO, Alpaca, ShareGPT, TRL, custom mapping, full (with provenance).
 
-Every exporter is a projection of one canonical row (see `CONTRACTS.md`).
+New: **ModelForge CoT preset** puts the reasoning trace + answer in `completion`. **RLVR preset** `{prompt, answer, verifier}` for trainers with verifiable rewards (not ModelForge yet).
 
-| Format | Library | Notes |
-|---|---|---|
-| JSONL | `orjson` | Default. ModelForge-native. |
-| JSON | `orjson` | Plain top-level array (never a wrapped object; ModelForge's regex may pick the wrong key). |
-| CSV | `csv` | `QUOTE_ALL`, `utf-8-sig`; nested messages as a JSON string column plus flat prompt/response. Warn: ModelForge cannot use nested CSV. |
-| Parquet | `pyarrow` | Explicit schema always; `zstd`. ModelForge's preferred type. |
-| Arrow | `pyarrow` | Cheap add; ModelForge reads `.arrow`. |
-| Avro | `fastavro` | Explicit schema, nullable unions, `deflate`, `validate_many`. |
-| JSONB | `.sql` script | JSONB is a Postgres column type, not a file. Ship `CREATE TABLE ... data jsonb` + inserts with a random dollar-quote tag + optional GIN index; optional direct push via `psycopg` 3. UI label: "Postgres JSONB (.sql)". |
-| HF Hub | `datasets` | Optional push with dataset card. |
-
-Presets (field mappings):
-- **ModelForge SFT**: `{prompt, completion}` strings (safest; works for text_generation, instruction_following, summarization).
-- **ModelForge SFT chat**: `{messages}`.
-- **ModelForge DPO**: `{prompt, chosen, rejected}`.
-- **ModelForge QA fallback**: context + question in `prompt`, answer in `completion` (ModelForge's extractive_qa cannot train).
-- OpenAI chat SFT, OpenAI DPO, Alpaca, ShareGPT, TRL prompt/completion, TRL DPO.
-- **Custom**: user supplies a field mapping (JSON) in UI/CLI.
-
-ModelForge rules Bob must follow (from research/01): canonical column names only (aliases are never applied), identical keys and types in every row, no extra columns, one file per folder (directories merge, and Parquet hides JSONL), and token-length stats with a max-length cap (512 truncation under 12 GB VRAM).
+ModelForge rules still apply: canonical columns only, identical row types, one file per folder, token-length stats + cap.
 
 ## 6. Standalone by design
-- Bob is its own Python package (`bob`), Python 3.12+. **It never imports ModelForge.**
-- ModelForge integration = write the file + `bob_manifest.json` (maps to ModelForge's `DatasetValidationRequest` / `TrainingRunRequest`), plus an optional `--validate-with-modelforge URL TOKEN` that calls `POST /api/datasets/validate`.
-- Without ModelForge, the same output works with OpenAI fine-tuning, TRL, Unsloth, Axolotl, LlamaFactory, or HF Hub via presets.
+Python package `bob` (3.12+), never imports ModelForge; integrates through files + `bob_manifest.json` + optional `POST /api/datasets/validate`.
 
-## 7. Stack and repo layout
-
-- Backend: **FastAPI** + asyncio pipeline (Python-native format libs; matches ModelForge's stack).
-- Realtime + files: **Convex** (`jobs`, `samples` tables; exports in Convex storage for public links). Optional: fall back to server-sent events if Convex setup stalls.
-- Frontend: **Vite + React + Tailwind** (+ Convex `useQuery`). Bolt may scaffold it.
-- iMessage: **Photon Spectrum** Bun sidecar (TypeScript only) calling FastAPI.
-- GPU box: **vLLM** serving a small instruct model (e.g. Qwen3-8B class) with an OpenAI-compatible endpoint; also GPU embeddings if wanted.
+## 7. Stack and layout
+FastAPI + asyncio pipeline, Convex for live progress and file links, Vite + React UI, Photon Spectrum sidecar for iMessage. GPU box: embeddings + optional polish tier.
 
 ```
-bob-the-builder/
-  .agents/                 plan, contracts, decisions, research (this folder)
-  bob/                     python package
-    cli.py                 `bob build <path|url> --preset --format --budget --writer`
-    api.py                 FastAPI: POST /jobs, GET /jobs/{id}, GET /presets
-    pipeline/
-      ingest.py chunk.py filters.py embed.py dedup.py
-      jev.py               decision client (raw HTTP), classify + verify + judge
-      select.py            scoring, clustering, budget quotas
-      write.py             router + writer backends (vllm, anthropic, templates)
-      verify.py certify.py
-      cost.py              token + $ ledger, baseline comparison
-    export/
-      presets.py formats.py jsonb_sql.py manifest.py modelforge.py
-    models.py              Chunk, Example, Job (pydantic)
-  web/                     Vite React app
-  convex/                  schema.ts, jobs.ts, samples.ts, files.ts
-  imessage/                spectrum-ts sidecar
-  demo/                    cached corpus + cached Jev/writer responses + golden run
-  tests/                   round-trip test for every format + ModelForge schema check
-  .env.example
+bob/
+  cli.py api.py models.py
+  pipeline/ ingest.py chunk.py filters.py embed.py dedup.py
+            jev.py scaledown.py          # raw HTTP clients, disk cache, replay
+            graph.py                     # facts, entity resolution, units, confidence
+            programs/                    # one module per program family
+            realize/ grammar/*.yaml realizer.py inflect.py
+            rank.py verify.py certify.py cost.py polish.py(optional)
+  export/ presets.py formats.py jsonb_sql.py manifest.py modelforge.py
+web/  convex/  imessage/  demo/  tests/
 ```
 
 ## 8. Build plan (5:00 to 10:00pm)
 
-Roles for 4 (merge A+B and C+D for 2; for 3, D absorbs Photon only if time allows):
-- **A: Selection** (ingest, chunk, filters, embed, dedup, Jev classify, select)
-- **B: Writing + trust** (writer router, Humpback, DPO, Jev verify, certify, cost ledger, vLLM on GPU box)
-- **C: Output** (canonical schema, presets, all format writers, manifest, ModelForge validate, CLI, tests)
-- **D: Experience** (web UI, Convex, Photon iMessage, demo + backup video)
+Roles (2 people: A+B and C+D):
+- **A: Read** (ingest, filters, Jev triage, ScaleDown Extract, fact graph)
+- **B: Compose** (question programs, DPO perturbation, CoT traces)
+- **C: Speak + ship** (grammar bank, realizer, Jev ranking, Summarize tasks, exporters, presets)
+- **D: Show** (UI, Convex, Photon, demo)
 
 | Time | A | B | C | D |
 |---|---|---|---|---|
-| **5:00-5:20** | All: lock `CONTRACTS.md`, repo skeleton, `.env`, one working Jev call + one writer call | | | |
-| 5:20-6:20 | ingest (files + Firecrawl), chunk, heuristics, MinHash | vLLM up on GPU box; writer interface; Humpback prompt; templates tier | canonical model; JSONL/JSON/CSV/Parquet/Arrow; ModelForge + OpenAI + Alpaca + ShareGPT presets | Convex schema + mutations; UI skeleton (upload, options) |
-| 6:20-7:20 | embeddings, semantic dedup, Jev 6-question classify (async, cached to disk), select + budget | DPO (perturbation + no-context), Jev verify, cosine groundedness, cost ledger | Avro, JSONB .sql, manifest, `bob build` CLI, round-trip tests | live job view (stages, progress, cost ticker, sample feed); Photon echo bot on a real phone |
-| 7:20-8:00 | **Integrate end to end** (A + B + C), D wires UI to `POST /jobs` | | | |
-| **8:00 CUT LINE 1 (MVP)** | Upload or URL -> Jev-selected chunks -> Humpback SFT -> verified rows -> JSONL + Parquet + CSV downloads in the UI with live progress and cost. **If behind: drop Avro/JSONB/HF/DPO/Photon.** | | | |
-| 8:00-9:00 | "why dropped" reasons; signal map data (UMAP coords) | certificate (sampled judge + Wilson CI); Opus baseline comparison | ModelForge validate call; zip bundle; HF push (optional) | cost meter vs Opus, signal map, certificate card; iMessage reply with link + attachment; **record backup video** |
-| **9:00 CUT LINE 2 (freeze)** | Bug fixes only | | | |
-| 9:00-9:30 | Stretch: hand Parquet to ModelForge live and start a run | | | |
-| 9:30-9:50 | Rehearse demo 3x with a timer; warm caches; reset DB | | | |
-| 9:50-10:00 | README with architecture diagram + sponsor list; commit + push | | | |
+| 5:00-5:20 | All: lock `CONTRACTS.md` (Fact + Program shapes), keys, one working Jev call + one ScaleDown Extract call | | | |
+| 5:20-6:20 | ingest, chunk, heuristics, dedup, Jev triage | programs on a **hand-written fixture graph**: lookup, inverse, definition, procedure, compare | grammar bank v1 (5+ phrasings per program), realizer, JSONL/Parquet/CSV + ModelForge presets | Convex + UI skeleton; Photon echo bot |
+| 6:20-7:20 | Extract schema, fact graph, entity resolution, span check | multi-hop, aggregate, convert, true/false, CoT, DPO perturbation | Jev ranking, Summarize explain-topic, Avro/JSONB/Arrow, manifest | live job view: stage stepper, graph stats, sample feed, cost meter |
+| 7:20-8:00 | **Integrate on real graph** | | | |
+| **8:00 CUT LINE 1** | Docs -> fact graph -> 5+ program types -> ranked rows -> JSONL + Parquet in the UI with provenance and cost. Drop Avro/JSONB/multi-turn/Photon if behind. | | | |
+| 8:00-9:00 | corroboration scores, "why dropped" | multi-turn walks, program coverage sampler | grammar bank v2 (20+ per program), certificate | **fact graph visual** (click a row, see its path light up), Opus cost comparison, iMessage reply; backup video |
+| **9:00 FREEZE** | Bug fixes only | | | |
+| 9:00-9:30 | Stretch: Jev phrase-decoding paraphraser, or a live ModelForge run | | | |
+| 9:30-10:00 | Rehearse 3x, warm caches, README, push | | | |
 
-## 9. Demo script (2 minutes, live)
-1. **0:00 Hook.** "Good fine-tuning data costs dollars per example. Bob makes it for fractions of a cent."
-2. **0:15 Text it.** A judge texts Bob a docs URL plus "qa 200". Bob replies instantly: "On it."
-3. **0:30 Watch it think.** Web UI shows the same job live: 15 pages, 240 chunks, heuristics drop nav and boilerplate, Jev keeps 70 high-signal chunks (show its probabilities and a rejected chunk with its reason).
-4. **0:55 Watch it write and check itself.** Rows stream in with faithfulness scores; one gets rejected as unsupported. Cost meter: "$0.03 so far. Opus 5.5: $2.80. 93x cheaper."
-5. **1:20 Ship it.** One click: Parquet, ModelForge JSONL, Avro, Postgres JSONB `.sql` loaded into Postgres in one line. Certificate: "94% ± 4% grounded".
-6. **1:40 Close the loop.** Phone buzzes: "200 examples, $0.04, download link + file attached." Optional: start a ModelForge run on it.
-7. **1:55 Close.** "Any corpus to training data, in a minute, for pennies."
+Grammar bank tip: writing phrasings is the most parallel, lowest-risk work. Anyone who is blocked writes grammar.
 
-Keep a pre-run job in a second tab and the backup video ready.
+## 9. Demo script (2 minutes)
+1. **0:00 Hook.** "Every synthetic data tool is an LLM rewriting your docs. Bob uses zero LLM tokens, and its answers are more trustworthy."
+2. **0:15 Text it.** A judge texts Bob a docs URL. "On it."
+3. **0:30 Read.** UI: 15 pages, 240 chunks, Jev drops boilerplate, Extract pulls 1,800 facts with source spans. The fact graph grows on screen.
+4. **0:55 Compose.** Rows stream in. Click a multi-hop row: its path lights up across three documents, with a computed answer and a reasoning trace. Show a DPO pair whose rejected answer swapped one value.
+5. **1:20 Ship.** Parquet, ModelForge JSONL, Postgres JSONB. Meter: "$0.04. Opus 5.5: $6.90. LLM tokens: 0."
+6. **1:40 Phone buzzes.** "1,000 rows, link attached."
+7. **1:55 Close.** "Your documents, compiled into training data."
 
-## 10. Pre-event checklist (before 5pm, no product code)
-- [ ] Jev access: OpenRouter key and a working `POST /api/alpha/decisions` call (fallback: Vercel AI Gateway, DigitalOcean, Cloudflare Clef-flash on Workers AI).
-- [ ] Anthropic key (each builder gets $50; pool them). Confirm Haiku 5.5 model ID and price.
-- [ ] GPU box: vLLM installed, writer model weights downloaded, OpenAI-compatible endpoint reachable from laptops.
-- [ ] Photon: account at app.photon.codes, managed iMessage line provisioned, `PROJECT_ID` / `PROJECT_SECRET`.
-- [ ] Firecrawl key; Convex project (`npx convex dev` once).
-- [ ] `pip install` pyarrow fastavro orjson datasketch model2vec scikit-learn pymupdf python-docx trafilatura psycopg[binary] fastapi uvicorn httpx anthropic firecrawl convex; download potion-base-8M.
-- [ ] Choose and pre-crawl the demo corpus; save to `demo/`.
-- [ ] Confirm Photon's "double prize with SDK" offer applies tonight.
+## 10. Pre-event checklist
+- [ ] ScaleDown account (50M free tokens), key, one Extract + one Summarize call; confirm `api.scaledown.xyz` request shape and output caps.
+- [ ] Jev via OpenRouter Decisions API (`POST /api/alpha/decisions`) working; confirm model ID.
+- [ ] Photon line provisioned; Firecrawl key; Convex project.
+- [ ] `pip install` pyarrow fastavro orjson datasketch model2vec scikit-learn networkx pint inflect pymupdf python-docx trafilatura psycopg[binary] fastapi uvicorn httpx firecrawl convex.
+- [ ] Pick a **fact-dense** demo corpus (API docs, product manual, policy handbook); pre-crawl to `demo/`.
+- [ ] Optional: vLLM on GPU box for the polish tier.
 
-## 11. Risks and mitigations
+## 11. Risks
 
 | Risk | Mitigation |
 |---|---|
-| Jev access or request format | Get a working call first. Raw HTTP, no `temperature`/`max_tokens`. Fallbacks: Clef-flash (same API shape), then embedding + LogReg head trained on cached Jev labels ("distilled System 1"). |
-| Jev confidently wrong (11.5% wrong at ≥ 90%) | Thresholds set on about 100 hand labels; descriptive option names (`useful_self_contained_fact`, never `0/1`); 50-chunk name-swap robustness check. |
-| Prompt injection in uploaded docs | Strip instruction-like text; dedicated injection Noul; never let chunk text become a system prompt. |
-| Writer hallucination (esp. small or diffusion) | Jev verify + cosine groundedness on every row; Humpback mode keeps answers verbatim from source. |
-| Humpback answers read like documents | Assistant-rewrite tier for top 20%; record style in metadata. |
-| Wifi / API rate limits | Cache every Jev and writer response to disk; replay mode; semaphores (6 to 8) with backoff; phone hotspot; backup video. |
-| vLLM setup eats time | B gives it 30 minutes max, then falls back to Haiku 5.5. |
-| Photon early preview | Pin version; test on a real phone by 7:20; fall back to Spectrum terminal provider. |
-| Convex limits (1 MB docs) | Files in storage, only last 50 samples in DB. SSE fallback. |
-| Schema surprises | Explicit schemas + round-trip read test per format + ModelForge column check. |
-| Scope creep | Hard freeze at 9:00. DPO, Avro, JSONB, HF, Photon are all toggles that can be dropped. |
+| Extraction errors (about 89.5% field accuracy in one test) | Keep high-confidence fields; span must appear verbatim; corroborate repeated facts; Jev checks fact vs span. |
+| Repetitive phrasing | Big grammar bank; Jev picks the best of many; paraphrase stretch; Summarize for long answers. |
+| Entity resolution merges wrong things | Conservative: exact-normalized match + high embedding similarity + same type. |
+| Corpus not fact-dense | Pick the demo corpus carefully; fall back to Summarize-based tasks for narrative text. |
+| ScaleDown or Jev access / request format | Working calls first; cache everything to disk; replay mode. Jev fallback: ScaleDown Classify (same Decisions API). |
+| Summarize output cap and weak query focus | Use it for topic explanations and summaries only; keep factual answers programmatic. |
+| Wifi / rate limits | Disk cache, replay, semaphores, hotspot, backup video. |
+| Scope creep | Freeze at 9:00; multi-turn, Avro, JSONB, Photon, polish tier are toggles. |
 
 ## 12. Prize targets
-1. **Anthropic top 3** ($10k credits): overall demo quality; Claude Haiku 5.5 as writer + judge.
-2. **Photon Best iMessage Agent** ($1k, possibly doubled): "text a URL, get a dataset".
-3. Name Firecrawl and Convex in the demo for partner goodwill.
+1. **Anthropic top 3**: novelty ("zero-LLM data generation") plus the team building it with Claude Code. Note: v2 no longer uses Claude in the pipeline; the optional polish tier can use Haiku 5.5.
+2. **Photon iMessage** ($1k): text a URL, get a dataset.
+3. Name Firecrawl, Convex, ScaleDown, TypeSafe in the demo.

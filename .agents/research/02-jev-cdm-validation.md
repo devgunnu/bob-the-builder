@@ -1,5 +1,7 @@
 # Research 02: Validating "Jev classifies, CDMs generate"
 
+> **CORRECTION:** the CDM sections below researched the wrong term ("Constrained Decision Model"). CDM = ScaleDown's **Constrained Decoding Models**, which do produce constrained text. See [05](05-cdm-recheck-and-llm-free-generation.md). The Jev sections remain valid.
+
 > Source: research agent, 2026-10-30. Several domains (openrouter.ai, huggingface.co, typesafe docs) were blocked in the research sandbox; many figures come from third-party write-ups and vendor claims. Verify against docs.typesafe.ai and provider docs in the first 30 minutes.
 
 ## Verdict

@@ -24,8 +24,11 @@ class Chunk(BaseModel):
 class Example(BaseModel):                    # the canonical row; every export is a projection
     id: str
     kind: Literal["sft", "dpo"]
-    tier: Literal["template", "humpback", "qa", "rewrite"]
+    tier: Literal["program", "summarize", "decoded", "polish"]   # polish = optional LLM tier
+    program: str                             # lookup | inverse | multi_hop | compare | ... | explain_topic
     task_type: str                           # qa | instruction | howto | definition | ...
+    reasoning: str | None = None             # CoT trace rendered from the graph path
+    fact_ids: list[str] = []                 # every fact used; provenance via Fact.span
     system: str | None = None
     prompt: str
     response: str | None = None              # sft
@@ -40,7 +43,7 @@ class Example(BaseModel):                    # the canonical row; every export i
     signal: float
     faithfulness_p: float                    # Jev "supported?" probability
     groundedness_cos: float
-    writer: str                              # "template" | "vllm:qwen3-8b" | "claude-haiku-5-5"
+    writer: str                              # "grammar+jev" | "scaledown-summarize" | "polish:<model>"
     cost_usd: float
 
 class Job(BaseModel):
@@ -63,7 +66,13 @@ def embed(chunks: list[Chunk]) -> None                                      # in
 def dedup(chunks: list[Chunk]) -> None                                      # MinHash + semantic
 async def jev_classify(chunks: list[Chunk], goal: str) -> None              # in place, cached
 def select(chunks: list[Chunk], n_examples: int, budget_usd: float | None) -> list[Chunk]
-async def write(chunks: list[Chunk], cfg: WriteConfig) -> list[Example]
+async def extract(chunks: list[Chunk]) -> list[Fact]                      # ScaleDown Extract
+def build_graph(facts: list[Fact]) -> FactGraph                          # resolve, normalize, corroborate
+def compose(graph: FactGraph, n: int, mix: dict[str, float]) -> list[Draft]   # programs
+def realize(drafts: list[Draft]) -> list[Candidates]                      # grammar bank
+async def rank(cands: list[Candidates]) -> list[Example]                  # Jev Choice
+async def explain_topics(clusters, n: int) -> list[Example]               # ScaleDown Summarize
+async def polish(examples, frac: float) -> list[Example]                  # OPTIONAL, off by default
 async def verify(examples: list[Example], chunks: dict[str, Chunk]) -> list[Example]
 async def certify(examples: list[Example], sample_frac=0.05) -> dict
 def export(examples: list[Example], preset: str, formats: list[str], out_dir: Path) -> dict[str, Path]
@@ -100,7 +109,7 @@ Preference judge: `Choice` over `response_one_is_better`, `response_two_is_bette
 Signal score (starting point, tune on hand labels):
 `signal = useful * (density / 4) * (1 - boilerplate) * (task_type != not_useful)`; drop if `pii > 0.5` or `injection > 0.5` (unless user opts in).
 
-## 4. Writer interface (`bob/pipeline/write.py`)
+## 4. Optional polish tier (`bob/pipeline/polish.py`, off by default)
 
 ```python
 class Writer(Protocol):
@@ -110,7 +119,7 @@ class Writer(Protocol):
 ```
 Backends: `VLLMWriter` (OpenAI-compatible base_url on the GPU box), `AnthropicWriter` (Haiku 5.5, tool use / structured output), `TemplateWriter` (no LLM).
 
-Humpback prompt contract: input = chunk text + task_type + goal; output JSON `{"instruction": str, "self_score": 1-5}`. The chunk text (lightly cleaned) becomes the response. Keep rows with `self_score >= 4`.
+Only used when the user opts in. Rewrites the top N% of rows for voice; must not change computed answers (re-verify after).
 
 Banned phrasing in generated prompts (regex reject): "according to the (text|passage|document)", "in this (document|passage)", "the author".
 
@@ -162,3 +171,69 @@ bob build ./docs --goal "support agent for Acme" --n 500 --kind both \
   --preset modelforge-sft --format jsonl,parquet --writer vllm \
   [--validate-with-modelforge http://localhost:8000 TOKEN] [--replay]
 ```
+
+## 9. Facts and graph (`bob/pipeline/graph.py`) [v2]
+
+```python
+class Fact(BaseModel):
+    id: str
+    kind: Literal["attribute", "relation", "definition", "procedure", "causal", "condition", "quantity"]
+    subject: str                 # entity name as written
+    subject_type: str | None     # service | product | person_role | concept | ...
+    predicate: str               # "default timeout", "depends on", "is defined as"
+    object: str | None           # value or target entity
+    value_num: float | None = None
+    unit: str | None = None      # normalized with pint
+    steps: list[str] | None = None   # procedures, in order
+    chunk_id: str
+    span: tuple[int, int]        # char offsets in chunk text; must match verbatim
+    extract_conf: float
+    corroboration: int = 1       # number of chunks asserting the same fact
+    conf: float                  # extract_conf x span_ok x f(corroboration) x jev_supported
+```
+`FactGraph` = networkx MultiDiGraph: nodes are resolved entities (`canonical_name`, `type`, `aliases`), edges are relation facts, node attributes hold attribute facts.
+
+ScaleDown Extract schema (per chunk, `response_format` JSON schema; schema is guidance, so validate after):
+```json
+{"entities": [{"name": "", "type": ""}],
+ "attributes": [{"entity": "", "attribute": "", "value": "", "unit": ""}],
+ "relations": [{"source": "", "relation": "", "target": ""}],
+ "definitions": [{"term": "", "definition": ""}],
+ "procedures": [{"goal": "", "steps": [""]}],
+ "causal": [{"cause": "", "effect": "", "condition": ""}]}
+```
+
+## 10. Programs and realization [v2]
+
+```python
+class Program(Protocol):
+    name: str                                   # "multi_hop"
+    def sample(self, g: FactGraph, rng) -> Draft | None
+
+class Draft(BaseModel):
+    program: str
+    slots: dict[str, str]                       # {"entity": "API gateway", "attr": "timeout", ...}
+    answer: str                                 # computed or copied
+    reasoning_path: list[str]                   # fact ids in order
+    perturbed_answer: str | None = None         # for DPO
+    rejection_strategy: str | None = None
+```
+
+Grammar bank: `bob/pipeline/realize/grammar/<program>.yaml`, e.g.
+```yaml
+multi_hop:
+  question:
+    - "What is the {attr} of the {type2} that {e1} {rel}?"
+    - "{e1} {rel} a {type2}. What is that {type2}'s {attr}?"
+    - "Which {attr} applies to whatever {e1} {rel}?"
+  answer:
+    - "{answer}. {e1} {rel} {e2}, and {e2}'s {attr} is {answer}."
+  reasoning:
+    - "Step 1: {e1} {rel} {e2} ({src1}). Step 2: {e2}'s {attr} is {answer} ({src2})."
+```
+Ranking: send all filled candidates (≤ 255) to Jev as a `Choice` named `most_natural_and_unambiguous_phrasing`; keep the top one (and the second for diversity if margin is small). Then Noul `answerable_without_seeing_any_document`.
+
+## 11. ScaleDown client (`bob/pipeline/scaledown.py`) [v2]
+- Extract/Summarize: OpenAI-compatible chat completions (`api.scaledown.xyz` native or OpenRouter `scaledown/extract`, `scaledown/summarize`). Text in last user message; schema via `response_format`.
+- Classify: OpenRouter Decisions API (same as Jev).
+- Cache every request/response to `demo/cache/scaledown/<sha1>.json`. Verify request shape and caps at 5:00pm.
