@@ -10,13 +10,15 @@ Everything a human or an AI agent needs to build Bob at Night Hack (2026-10-30).
    - [02-jev-cdm-validation.md](research/02-jev-cdm-validation.md): what Jev and Constrained Decision Models are, and where they fit.
    - [03-alternative-approaches.md](research/03-alternative-approaches.md): cheap selection, generation, QC, prior art, cost math.
    - [04-hackathon-stack-and-build-plan.md](research/04-hackathon-stack-and-build-plan.md): partner integrations, format libraries, stack, timeline, demo.
+   - [05-cdm-recheck-and-llm-free-generation.md](research/05-cdm-recheck-and-llm-free-generation.md): **corrects 02.** CDM = ScaleDown Constrained Decoding Models; the zero-LLM generation engine.
 
-## TL;DR
-- **Selection:** free heuristics + dedup + embeddings, then Jev (System 1 decision model) asks six questions per chunk for about $0.06 per 1M-token corpus.
-- **Writing:** Humpback mode, where the source chunk is the answer and a tiny writer (local vLLM, or Claude Haiku 5.5) writes only the instruction. Templates as a $0 tier. DPO rejected answers via free perturbations.
-- **Trust:** Jev verifies every row, cosine groundedness, sampled judge certificate with confidence interval.
-- **Output:** one canonical row, projected into ModelForge / OpenAI / Alpaca / ShareGPT / TRL / custom presets, written as JSONL, JSON, CSV, Parquet, Arrow, Avro, or Postgres JSONB `.sql`.
-- **Cost:** about $0.40 for 2,500 rows (about $0.15 on our GPU) vs about $35 with Opus 5.5.
+## TL;DR (v2)
+- **Read:** free filters, then Jev triages chunks and ScaleDown Extract pulls typed facts with verbatim source spans into a fact graph.
+- **Generate, with zero LLM tokens:** question programs compose new examples over the graph (multi-hop, comparisons, arithmetic, aggregation, procedures, true/false, multi-turn, reasoning traces). Answers are computed or copied, so they are correct by construction.
+- **Speak:** a grammar bank overgenerates phrasings, Jev picks the most natural; ScaleDown Summarize writes topic explanations and summaries.
+- **Trust:** span checks, corroboration, Jev verification, certificate with confidence interval; free hard DPO negatives from perturbed facts.
+- **Output:** ModelForge / OpenAI / Alpaca / ShareGPT / TRL / CoT / RLVR / custom presets in JSONL, JSON, CSV, Parquet, Arrow, Avro, Postgres JSONB `.sql`.
+- **Cost:** about $0.43 for 5,000 rows (about $0 on starter tokens) vs about $70 with Opus 5.5.
 - **Standalone:** never imports ModelForge; integrates through files + `bob_manifest.json`.
 
 ## Caveats
