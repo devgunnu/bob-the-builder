@@ -70,6 +70,11 @@ Each entry: decision, why, what would change it.
 - **Eval:** human-written test set (incl. fake-feature questions) and a naive-LLM-data baseline, so results aren't circular.
 - Details: research/09.
 
+## D17. [PROPOSED] Position Bob for behaviour, not memorisation
+- RAG beats unsupervised fine-tuning for knowledge (Ovadia et al., EMNLP 2024), so "a model that memorised your docs" is a weak pitch.
+- Bob's main use case becomes RAFT-style data: question + relevant chunk + verified distractors -> cited answer, plus "not in the retrieved docs" abstentions. Second: narrow-skill distillation (extraction, classification, house-style replies, tool calls).
+- Demo: 4 models with the same retrieval, scored on human-written questions; hallucination rate is the headline. Details: research/10.
+
 ## Open questions for the team
 1. Demo product: ModelForge (default) or another real product?
 2. Is the Photon iMessage prize worth one person's evening, or should D go all in on the web UI?
