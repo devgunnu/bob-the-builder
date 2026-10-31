@@ -23,16 +23,16 @@
 ### Poses needed (priority order)
 | # | Pose name | Frames | Where it's used |
 |---|---|---|---|
-| 1 | `dive` | 3 | Blackout transition: Bob jumps into the glowing bar before it morphs |
-| 2 | `read` | 3 | Plan screen while reading (fetch, triage, evidence): Bob with a document and magnifying glass |
-| 3 | `type` | 3 | Build screen during `generate`: Bob typing on a tiny laptop |
-| 4 | `stamp` | 3 | Build screen during `verify`: Bob stamping a cube "VERIFIED" |
-| 5 | `nope` | 3 | Rejected rows: Bob shaking head, tossing a cracked cube in a bin |
-| 6 | `point` | 2 | Plan screen: Bob pointing at the Start button |
-| 7 | `carry` | 3 | Export: Bob carrying a stack of cubes |
-| 8 | `blink` | 3 | Idle loop: subtle blink / breathing |
-| 9 | `sweat` | 2 | Error state: confused, sweat drop |
-| 10 | `sleep` | 2 | Long idle on the landing page: zzz |
+| 1 | `dive` | 3 | Blackout transition: Bob jumps into the glowing bar before it morphs | Done |
+| 2 | `read` | 3 | Plan screen while reading (fetch, triage, evidence): Bob with a document and magnifying glass | Done |
+| 3 | `type` | 3 | Build screen during `generate`: Bob typing on a tiny laptop | Done |
+| 4 | `stamp` | 3 | Build screen during `verify`: Bob stamping a cube "VERIFIED" | Done |
+| 5 | `nope` | 3 | Rejected rows: Bob shaking head, tossing a cracked cube in a bin | Done |
+| 6 | `point` | 2 | Plan screen: Bob pointing at the Start button | Done |
+| 7 | `carry` | 3 | Export: Bob carrying a stack of cubes | Done |
+| 8 | `blink` | 3 | Idle loop: subtle blink / breathing | Done |
+| 9 | `sweat` | 2 | Error state: confused, sweat drop | Done |
+| 10 | `sleep` | 2 | Long idle on the landing page: zzz | Done |
 
 ## B. Art: Bob memes for the carousel
 
