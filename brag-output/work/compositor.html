@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root { --yellow:#ffc82e; --amber:#f6a417; --blue:#1f5bff; --sky:#4d8bff; --mint:#63f0cf; --navy:#0b1533; --cream:#f6f3ec; --void:#030409; --panel:#0a0e1a; --panel2:#0f1424; --dim:#8a93ab; --rose:#fb7185; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--void); }
+  #stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; font-family: Inter, sans-serif; }
+  .layer { position: absolute; inset: 0; }
+  .disp { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; letter-spacing: -0.02em; }
+  .mono { font-family: "JetBrains Mono", monospace; }
+  .dots { background-image: radial-gradient(rgba(11,21,51,0.13) 1.6px, transparent 1.7px); background-size: 34px 34px; }
+  .glow { position: absolute; border-radius: 50%; }
+
+  /* hook */
+  #hook .line { position: absolute; left: 0; right: 0; text-align: center; color: var(--navy); }
+  #hook .w { display: inline-block; }
+  .card { position: absolute; width: 760px; border-radius: 30px; background: #fff; border: 2px solid rgba(11,21,51,0.08); box-shadow: 0 40px 90px -40px rgba(11,21,51,0.55); padding: 34px 40px; }
+  .card .hd { font-size: 24px; font-weight: 600; display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .card .q { font-size: 36px; font-weight: 600; color: var(--navy); line-height: 1.2; }
+  .card .a { font-size: 30px; color: rgba(11,21,51,0.6); margin-top: 10px; line-height: 1.3; }
+  .stamp { position: absolute; border: 7px solid var(--rose); color: var(--rose); border-radius: 18px; padding: 8px 26px; font-size: 64px; letter-spacing: 0.04em; background: rgba(255,255,255,0.85); }
+
+  /* app window */
+  #win { position: absolute; left: 0; top: 0; width: 1600px; height: 900px; transform-origin: 0 0; overflow: hidden; }
+  #winInner { position: absolute; inset: 0; }
+  #app { width: 1600px; height: 900px; display: block; }
+  #winBorder { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; }
+
+  #cap { position: absolute; left: 0; right: 0; top: 58px; text-align: center; color: #fff; font-size: 60px; line-height: 1.1; }
+  #cap .w { display: inline-block; white-space: pre; }
+  .hl { color: var(--yellow); }
+  .hm { color: var(--mint); }
+
+  .sticker { position: absolute; background: var(--yellow); color: var(--navy); border: 5px solid var(--navy); border-radius: 22px; padding: 8px 30px 14px; font-size: 76px; box-shadow: 0 10px 0 var(--navy); }
+
+  /* stack */
+  .node { position: absolute; top: 380px; width: 380px; height: 420px; border-radius: 30px; background: var(--panel); border: 1.5px solid rgba(255,255,255,0.08); padding: 30px; color: #fff; overflow: hidden; }
+  .node .bar { position: absolute; left: 0; top: 0; right: 0; height: 8px; }
+  .node .k { font-size: 22px; letter-spacing: 0.18em; color: var(--dim); font-weight: 600; margin-top: 128px; }
+  .node .t { font-size: 40px; margin-top: 8px; line-height: 1.05; }
+  .node .s { font-size: 22px; color: rgba(255,255,255,0.7); margin-top: 12px; line-height: 1.35; }
+  .node img { position: absolute; left: 22px; top: 18px; width: 130px; height: 130px; object-fit: contain; }
+  .arrow { position: absolute; top: 580px; height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--sky), var(--mint)); transform-origin: 0 50%; }
+  .arrowhead { position: absolute; top: 571px; width: 0; height: 0; border-left: 20px solid var(--mint); border-top: 12px solid transparent; border-bottom: 12px solid transparent; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <!-- backgrounds -->
+  <div id="bgCream" class="layer" style="background: var(--cream)">
+    <div class="layer dots"></div>
+    <div class="glow" style="left:-200px;top:-220px;width:760px;height:760px;background:radial-gradient(circle,rgba(99,240,207,0.32),transparent 65%)"></div>
+    <div class="glow" style="right:-220px;bottom:-260px;width:820px;height:820px;background:radial-gradient(circle,rgba(255,200,46,0.32),transparent 65%)"></div>
+    <div class="glow" style="left:460px;top:-40px;width:1000px;height:1000px;background:radial-gradient(circle,rgba(77,139,255,0.16),transparent 60%)"></div>
+  </div>
+  <div id="bgVoid" class="layer" style="background: var(--void)">
+    <div class="glow" id="g1" style="width:1100px;height:1100px;background:radial-gradient(circle,rgba(31,91,255,0.22),transparent 62%)"></div>
+    <div class="glow" id="g2" style="width:900px;height:900px;background:radial-gradient(circle,rgba(99,240,207,0.12),transparent 62%)"></div>
+    <div class="glow" id="g3" style="width:900px;height:900px;background:radial-gradient(circle,rgba(255,200,46,0.10),transparent 62%)"></div>
+  </div>
+
+  <!-- 1-2: hook -->
+  <div id="hook" class="layer">
+    <div id="h1" class="line disp" style="top:330px;font-size:118px;line-height:1.05">
+      <span class="w" id="h1a">Fine-tuning needs</span><br />
+      <span class="w" id="h1b"><span style="color:var(--blue)">thousands</span> of examples.</span>
+    </div>
+    <div id="h2" class="line disp" style="top:200px;font-size:96px">
+      <span class="w" id="h2a">Synthetic data</span> <span class="w" id="h2b" style="position:relative">makes things up.<span id="h2u" style="position:absolute;left:0;bottom:-6px;height:12px;border-radius:6px;background:var(--yellow);z-index:-1"></span></span>
+    </div>
+    <div id="hcard" class="card" style="left:400px;top:500px">
+      <div class="hd" id="hcHead"></div>
+      <div class="q">Can I export crawls as PDF?</div>
+      <div class="a">Yes, use the bulk PDF export setting.</div>
+    </div>
+    <div id="hstamp" class="stamp disp" style="left:860px;top:690px">REJECTED</div>
+    <div id="hstampSub" class="mono" style="position:absolute;left:870px;top:800px;font-size:26px;color:var(--rose);font-weight:500">invented feature</div>
+    <img id="hbob" style="position:absolute;left:1200px;top:430px;width:360px;height:330px;object-fit:contain" />
+  </div>
+
+  <!-- 3-8: the real app -->
+  <div id="win"><div id="winInner"><img id="app" /></div><div id="winBorder"></div></div>
+  <div id="cap" class="disp"></div>
+  <div id="meet" class="sticker disp" style="left:770px;top:852px">Meet Bob.</div>
+
+  <!-- 9: punchline -->
+  <div id="brk" class="layer">
+    <img id="bstamp" style="position:absolute;left:250px;top:300px;width:480px;height:480px;object-fit:contain" />
+    <div id="btext" class="disp" style="position:absolute;left:780px;top:420px;font-size:132px;color:#fff;line-height:1">
+      No <span style="position:relative;color:var(--rose)">made-up<span id="bstrike" style="position:absolute;left:-6px;top:54%;height:12px;border-radius:6px;background:var(--rose)"></span></span><br />rows.
+    </div>
+  </div>
+
+  <!-- 10: under the hood -->
+  <div id="stack" class="layer">
+    <div id="sh" class="disp" style="position:absolute;left:0;right:0;top:120px;text-align:center;font-size:92px;color:#fff">Built from scratch in <span class="hl">5 hours.</span></div>
+    <div id="ssub" style="position:absolute;left:0;right:0;top:250px;text-align:center;font-size:30px;color:var(--dim)">Night Hack 2026 · 117 commits · 160+ passing tests</div>
+    <div class="node" id="n0" style="left:120px"><div class="bar" style="background:var(--blue)"></div><img data-pose="read" /><div class="k">READ</div><div class="t disp">Firecrawl<br />+ Composio</div><div class="s">Docs sites, Notion, Confluence, Jira, Drive and files</div></div>
+    <div class="node" id="n1" style="left:560px"><div class="bar" style="background:var(--sky)"></div><img data-pose="type" /><div class="k">WRITE</div><div class="t disp">AWS Bedrock</div><div class="s">A cheap model writes every row, in your own AWS account</div></div>
+    <div class="node" id="n2" style="left:1000px"><div class="bar" style="background:var(--mint)"></div><img data-pose="stamp" /><div class="k">CHECK</div><div class="t disp">Jev<br />+ ScaleDown</div><div class="s">Small decision models check every row. The judge sees only the disagreements</div></div>
+    <div class="node" id="n3" style="left:1440px"><div class="bar" style="background:var(--yellow)"></div><img data-pose="carry" /><div class="k">SHIP</div><div class="t disp">Verified dataset</div><div class="s">OpenAI · ShareGPT · Alpaca · ModelForge · DPO</div></div>
+    <div class="arrow" id="a0" style="left:508px;width:44px"></div><div class="arrowhead" id="ah0" style="left:540px"></div>
+    <div class="arrow" id="a1" style="left:948px;width:44px"></div><div class="arrowhead" id="ah1" style="left:980px"></div>
+    <div class="arrow" id="a2" style="left:1388px;width:44px"></div><div class="arrowhead" id="ah2" style="left:1420px"></div>
+    <div id="sfoot" class="mono" style="position:absolute;left:0;right:0;top:860px;text-align:center;font-size:26px;color:var(--dim)">FastAPI · React · Lambda + Fargate · DynamoDB · Cognito · CDK</div>
+  </div>
+
+  <!-- 11: outro -->
+  <div id="outro" class="layer">
+    <img id="obob" style="position:absolute;left:810px;top:110px;width:300px;height:300px;object-fit:contain" />
+    <div id="oname" class="disp" style="position:absolute;left:0;right:0;top:420px;text-align:center;font-size:150px;color:var(--navy);line-height:1">bob the builder</div>
+    <div id="otag" style="position:absolute;left:0;right:0;top:600px;text-align:center;font-size:48px;color:rgba(11,21,51,0.68);font-weight:500">building datasets you never could</div>
+    <div id="oteam" style="position:absolute;left:0;right:0;top:730px;text-align:center;font-size:32px;color:var(--navy);font-weight:600">Gunbir &amp; Aaditya</div>
+    <div id="orepo" class="mono" style="position:absolute;left:0;right:0;top:784px;text-align:center;font-size:28px;color:var(--blue)">github.com/devgunnu/bob-the-builder</div>
+    <div id="ocredit" style="position:absolute;left:0;right:0;top:1030px;text-align:center;font-size:17px;color:rgba(11,21,51,0.45)">Music: Sascha Ende, ende.app (CC BY 4.0)</div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const eOut = (x) => 1 - Math.pow(1 - x, 3);
+const eIO = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const eBack = (x) => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const lerp = (a, b, k) => a + (b - a) * k;
+const B = (k) => 0.267 + 2.18284 * k; // bar lines
+
+const POSES = { wave: ["wave-1","wave-2","wave-1","wave-2","idle"], nope: ["nope-2","nope-3","nope-4","nope-3"], stamp: ["stamp-1","stamp-2","stamp-3"], read: ["read-1","read-2","read-3"], type: ["type-1","type-2","type-3"], carry: ["carry-1","carry-2","carry-3"], cheer: ["cheer-1","cheer-2","cheer-3","cheer-2"], hero: ["hero"] };
+const MS = { wave: 260, nope: 260, stamp: 260, read: 450, type: 220, carry: 300, cheer: 220, hero: 1000 };
+const sprite = (pose, t) => `assets/${POSES[pose][Math.floor((t * 1000) / MS[pose]) % POSES[pose].length]}.webp`;
+function setSrc(img, src) { if (img.getAttribute("src") !== src) img.setAttribute("src", src); }
+
+// pop-in: opacity + rise + scale
+function pop(el, t, at, dur = 0.4, rise = 40, fromScale = 0.96) {
+  const k = seg(t, at, at + dur);
+  el.style.opacity = eOut(k);
+  el.style.transform = `translateY(${(1 - eOut(k)) * rise}px) scale(${lerp(fromScale, 1, eBack(k))})`;
+  return k;
+}
+function show(el, on) { el.style.display = on ? "" : "none"; }
+
+// captions: [start, end, html words]
+const CAPS = [
+  [11.18, 15.35, 'Point him at your docs <span class="hl">and your Notion.</span>'],
+  [15.55, 18.75, 'He reads it all and <span class="hl">maps what to cover.</span>'],
+  [18.75, 22.0, 'Even the questions <span class="hl">the docs can\'t answer.</span>'],
+  [22.1, 25.3, 'A cheap model <span class="hl">writes</span> every row.'],
+  [25.3, 28.55, 'Small decision models <span class="hm">check every one.</span>'],
+  [28.65, 32.9, 'The judge only sees rows <span class="hl">where checks disagree.</span>'],
+  [33.02, 39.4, 'Every row ships <span class="hm">with its proof.</span>'],
+  [39.57, 43.85, 'Export to <span class="hl">any training format.</span>'],
+];
+// split caption html into word spans once
+const capEls = CAPS.map(([a, b, html]) => {
+  const d = document.createElement("div");
+  d.innerHTML = html;
+  const out = document.createElement("div");
+  const walk = (node, cls) => {
+    for (const ch of node.childNodes) {
+      if (ch.nodeType === 3) {
+        ch.textContent.split(/(\s+)/).forEach((w) => {
+          if (!w) return;
+          if (/^\s+$/.test(w)) { out.appendChild(document.createTextNode(" ")); return; }
+          const s = document.createElement("span"); s.className = "w " + (cls || ""); s.textContent = w; out.appendChild(s);
+        });
+      } else walk(ch, ch.className);
+    }
+  };
+  walk(d, "");
+  out.style.display = "none";
+  $("cap").appendChild(out);
+  return out;
+});
+
+// app camera keyframes: [t, scale, originX%, originY%]
+const CAM = [
+  [4.63, 1, 50, 50], [9.0, 1, 50, 50], [11.2, 1, 50, 30], [15.1, 1.06, 50, 95], [15.6, 1, 50, 30],
+  [17.0, 1, 50, 20], [20.5, 1.03, 50, 20], [21.3, 1.12, 88, 5], [22.05, 1, 50, 40],
+  [24.6, 1, 40, 60], [27.4, 1.13, 22, 72], [29.4, 1.13, 22, 72], [31.2, 1, 50, 40], [32.55, 1.09, 74, 38], [33.1, 1, 50, 30],
+  [34.9, 1.05, 30, 45], [36.2, 1.08, 85, 40], [37.4, 1.12, 26, 92], [39.25, 1.12, 26, 92], [39.65, 1, 50, 15], [43.93, 1.05, 70, 35],
+];
+function cam(t) {
+  let i = 0;
+  while (i < CAM.length - 1 && CAM[i + 1][0] <= t) i++;
+  const a = CAM[i], b = CAM[Math.min(i + 1, CAM.length - 1)];
+  const k = b[0] > a[0] ? eIO(seg(t, a[0], b[0])) : 0;
+  return [lerp(a[1], b[1], k), lerp(a[2], b[2], k), lerp(a[3], b[3], k)];
+}
+
+const FULL = { x: 0, y: 0, s: 1.2, r: 0 };
+const WINDOWED = { x: 208, y: 200, s: 1504 / 1600, r: 22 };
+
+async function render(t) {
+  const imgs = [];
+  // ---------- backgrounds ----------
+  const cream = t < 4.75 || t >= 52.655;
+  $("bgCream").style.opacity = cream ? 1 : 0;
+  $("bgVoid").style.opacity = cream ? 0 : 1;
+  $("g1").style.left = `${300 + Math.sin(t * 0.21) * 160}px`; $("g1").style.top = `${-200 + Math.cos(t * 0.17) * 120}px`;
+  $("g2").style.left = `${-250 + Math.cos(t * 0.13) * 140}px`; $("g2").style.top = `${420 + Math.sin(t * 0.19) * 120}px`;
+  $("g3").style.left = `${1250 + Math.sin(t * 0.15) * 140}px`; $("g3").style.top = `${380 + Math.cos(t * 0.23) * 120}px`;
+
+  // ---------- 1-2 hook ----------
+  show($("hook"), t < 4.7);
+  if (t < 4.7) {
+    const out1 = seg(t, 2.25, 2.45);
+    show($("h1"), t < 2.45);
+    pop($("h1a"), t, 0.15, 0.45, 50);
+    pop($("h1b"), t, 0.82, 0.45, 50);
+    $("h1").style.opacity = 1 - out1;
+    $("h1").style.transform = `translateY(${-out1 * 40}px)`;
+    const on2 = t >= 2.45;
+    for (const id of ["h2", "hcard", "hstamp", "hstampSub", "hbob"]) show($(id), on2);
+    if (on2) {
+      const out2 = eIO(seg(t, 4.38, 4.62));
+      pop($("h2a"), t, 2.45, 0.35, 40);
+      pop($("h2b"), t, 2.6, 0.35, 40);
+      $("h2u").style.width = `${eOut(seg(t, 2.85, 3.2)) * 100}%`;
+      pop($("hcard"), t, 2.7, 0.45, 60, 0.9);
+      const rej = t >= 3.36;
+      $("hcHead").innerHTML = rej
+        ? '<span style="color:#e11d48">&#10005; rejected: invented feature</span>'
+        : '<span style="color:#059669">&#10003; sounds confident</span>';
+      $("hcard").style.borderColor = rej ? "rgba(251,113,133,0.6)" : "rgba(11,21,51,0.08)";
+      const sk = seg(t, 3.36, 3.56);
+      $("hstamp").style.opacity = sk > 0 ? 1 : 0;
+      $("hstamp").style.transform = `rotate(-9deg) scale(${lerp(1.9, 1, eOut(sk))})`;
+      $("hstampSub").style.opacity = seg(t, 3.55, 3.8);
+      $("hstampSub").style.transform = "rotate(-9deg)";
+      pop($("hbob"), t, 2.9, 0.45, 50, 0.8);
+      setSrc($("hbob"), sprite("nope", t));
+      $("hook").style.opacity = 1 - out2;
+      $("hook").style.transform = `scale(${1 + out2 * 0.06})`;
+    } else { $("hook").style.opacity = 1; $("hook").style.transform = ""; }
+  }
+
+  // ---------- 3-8 app ----------
+  const appOn = t >= 4.55 && t < 43.93;
+  show($("win"), appOn);
+  if (appOn) {
+    const f = Math.min(1184, Math.max(0, Math.round((t - 4.63) * 30)));
+    const src = `frames/f${String(f).padStart(5, "0")}.jpg`;
+    if ($("app").getAttribute("src") !== src) { $("app").setAttribute("src", src); imgs.push($("app")); }
+    const w = eIO(seg(t, 9.2, 10.1));
+    const g = { x: lerp(FULL.x, WINDOWED.x, w), y: lerp(FULL.y, WINDOWED.y, w), s: lerp(FULL.s, WINDOWED.s, w), r: lerp(0, WINDOWED.r, w) };
+    const win = $("win");
+    win.style.transform = `translate(${g.x}px,${g.y}px) scale(${g.s})`;
+    win.style.borderRadius = `${g.r / g.s}px`;
+    win.style.opacity = eOut(seg(t, 4.55, 4.8));
+    win.style.boxShadow = w > 0 ? `0 50px 120px -30px rgba(0,0,0,${0.8 * w}), 0 0 0 ${1.5 / g.s}px rgba(255,255,255,${0.1 * w})` : "none";
+    const [s, ox, oy] = cam(t);
+    $("winInner").style.transformOrigin = `${ox}% ${oy}%`;
+    $("winInner").style.transform = `scale(${s})`;
+  }
+  // sticker on the landing
+  show($("meet"), t >= 4.9 && t < 8.3);
+  if (t >= 4.9 && t < 8.3) {
+    const k = seg(t, 5.18, 5.5), o = seg(t, 8.0, 8.3);
+    $("meet").style.opacity = (k > 0 ? 1 : 0) * (1 - o);
+    $("meet").style.transform = `rotate(-4deg) scale(${lerp(1.6, 1, eOut(k)) * (1 - o * 0.2)})`;
+  }
+  // captions
+  CAPS.forEach(([a, b], i) => {
+    const el = capEls[i];
+    const on = t >= a && t < b;
+    el.style.display = on ? "" : "none";
+    if (!on) return;
+    const words = [...el.querySelectorAll(".w")];
+    const out = seg(t, b - 0.18, b);
+    words.forEach((w, j) => {
+      const k = eOut(seg(t, a + j * 0.045, a + j * 0.045 + 0.32));
+      w.style.opacity = k * (1 - out);
+      w.style.transform = `translateY(${(1 - k) * 34 - out * 14}px)`;
+    });
+  });
+
+  // ---------- 9 punchline (music break) ----------
+  const brkOn = t >= 43.93 && t < 45.56;
+  show($("brk"), brkOn);
+  if (brkOn) {
+    setSrc($("bstamp"), sprite("stamp", t - 43.93));
+    pop($("bstamp"), t, 43.93, 0.35, 60, 0.7);
+    pop($("btext"), t, 44.08, 0.35, 40);
+    $("bstrike").style.width = `${eOut(seg(t, 44.55, 44.85)) * 108}%`;
+    const o = seg(t, 45.4, 45.56);
+    $("brk").style.opacity = 1 - o;
+  }
+
+  // ---------- 10 under the hood ----------
+  const stOn = t >= 45.56 && t < 52.67;
+  show($("stack"), stOn);
+  if (stOn) {
+    pop($("sh"), t, 45.56, 0.4, 40);
+    pop($("ssub"), t, 45.95, 0.4, 20);
+    const at = [46.12, 47.21, 48.3, 49.39];
+    at.forEach((a, i) => {
+      const n = $("n" + i);
+      pop(n, t, a, 0.45, 70, 0.9);
+      const img = n.querySelector("img");
+      setSrc(img, sprite(img.dataset.pose, t - a));
+      if (i < 3) {
+        const k = eOut(seg(t, at[i + 1] - 0.3, at[i + 1]));
+        $("a" + i).style.transform = `scaleX(${k})`;
+        $("ah" + i).style.opacity = k > 0.95 ? 1 : 0;
+      }
+    });
+    pop($("sfoot"), t, 50.48, 0.4, 20);
+    const o = seg(t, 52.45, 52.67);
+    $("stack").style.opacity = 1 - o;
+  }
+
+  // ---------- 11 outro ----------
+  const oOn = t >= 52.655;
+  show($("outro"), oOn);
+  if (oOn) {
+    const t0 = 52.67;
+    setSrc($("obob"), t < 56.5 ? sprite("wave", t - t0) : sprite("cheer", t - 56.5));
+    pop($("obob"), t, t0, 0.5, 80, 0.6);
+    pop($("oname"), t, 53.2, 0.45, 50);
+    pop($("otag"), t, 53.76, 0.45, 30);
+    pop($("oteam"), t, 54.85, 0.4, 20);
+    pop($("orepo"), t, 55.13, 0.4, 20);
+    $("ocredit").style.opacity = seg(t, 55.5, 56);
+    $("obob").style.marginTop = `${Math.sin((t - t0) * 2.0) * 6}px`;
+  }
+
+  // wait for every image that changed
+  await Promise.all([...document.images].filter((i) => i.offsetParent !== null || i.id === "app").map((i) => (i.complete ? (i.decode ? i.decode().catch(() => {}) : 0) : new Promise((r) => { i.onload = i.onerror = r; }))));
+}
+window.render = render;
+</script>
+</body>
+</html>

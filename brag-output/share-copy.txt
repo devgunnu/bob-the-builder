@@ -1,0 +1,3 @@
+We built Bob in 5 hours: point it at your docs and Notion, and it builds a fine-tuning dataset where every row is checked against its source. A cheap model writes, small decision models check every row, and the judge only sees the rows where they disagree.
+
+Music: Sascha Ende, ende.app (CC BY 4.0)
