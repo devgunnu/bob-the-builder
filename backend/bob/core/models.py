@@ -9,7 +9,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel
 
@@ -358,3 +358,4 @@ class GenContext:
     retriever: Retriever
     seeds: list[list[Message]]
     emit: Callable[[str, dict], Awaitable[None]]  # event bus publish for this job
+    verify_state: Any = None  # A4 per-job verify state (dedup index, judge semaphore); never serialized
