@@ -34,6 +34,7 @@ _ROLES = BEDROCK_BUCKETS
 class _JobLedger:
     models: ModelRoles | None = None
     by_bucket: dict[str, ModelCost] = field(default_factory=dict)
+    by_purpose: dict[str, ModelCost] = field(default_factory=dict)
     model_ids: dict[str, str] = field(default_factory=dict)
     price_unknown: set[str] = field(default_factory=set)
     fallbacks_used: list[str] = field(default_factory=list)
@@ -65,6 +66,7 @@ def load(job_id: str, cost: CostSummary) -> None:
     with _lock:
         led = _get(job_id)
         led.by_bucket = {k: v.model_copy() for k, v in cost.by_model.items()}
+        led.by_purpose = {k: v.model_copy() for k, v in cost.by_purpose.items()}
         led.model_ids.update(cost.model_ids)
         led.price_unknown = set(cost.price_unknown)
         led.fallbacks_used = list(cost.fallbacks_used)
@@ -104,6 +106,7 @@ def record(
     out_tokens: int = 0,
     usd: float | None = None,
     model: str | None = None,
+    purpose: str | None = None,
 ) -> None:
     with _lock:
         led = _get(job_id)
@@ -119,6 +122,12 @@ def record(
         mc.in_tokens += in_tokens
         mc.out_tokens += out_tokens
         mc.usd += usd
+        if purpose:
+            pc = led.by_purpose.setdefault(purpose, ModelCost())
+            pc.calls += calls
+            pc.in_tokens += in_tokens
+            pc.out_tokens += out_tokens
+            pc.usd += usd
         if model and bucket in _ROLES:
             led.model_ids[bucket] = model
 
@@ -173,6 +182,7 @@ def summary(job_id: str) -> CostSummary:
         led = _get(job_id)
         return CostSummary(
             by_model={k: v.model_copy() for k, v in led.by_bucket.items()},
+            by_purpose={k: v.model_copy() for k, v in led.by_purpose.items()},
             model_ids=dict(led.model_ids),
             price_unknown=sorted(led.price_unknown),
             total_usd=round(total, 6),
