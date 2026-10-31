@@ -15,9 +15,9 @@ Source of truth stays `PLAN.md` and `CONTRACTS.md` (v4.1); this file records wha
 | 3b. Demo docs corpus (`demo/corpus/`, 25 pages) | G2 | `gunbir/integration` | Done |
 | 3c. Demo Notion wiki (6 fictional pages) | G2 | `gunbir/integration` | Drafted + seed script; waiting on one parent page in Notion |
 | 4a. `/api/health` + container boot fix (`python-multipart`) | G1 | `gunbir/integration` | Done; container-style boot verified |
-| 4. API slice 2 (`/me/aws*`, `/me/models*`, `/connectors*`, preview, spot-check, export, files + `/url`, presets) | G1 | | Next |
-| 5. Jira / Confluence, `sync.py` (P1; orchestrator resync needs `sync.py`) | G2 | | Later |
-| 6. Integration with the frontend | G1 + G3/G4 | | After 4 |
+| 4. API slice 2 (`/me/aws*`, `/me/models*`, `/connectors*`, preview, spot-check, export, files + `/url`, presets) | G1 | `claude/bold-hopper-tsps3y` | Done; 10 new route tests |
+| 5. Jira / Confluence, `sync.py` (P1; orchestrator resync needs `sync.py`) | G2 | `claude/bold-hopper-tsps3y` | `sync.py` done; Jira / Confluence later |
+| 6. Integration with the frontend | G1 + G3/G4 | `claude/bold-hopper-tsps3y` | Merged and wired; real local run blocked on network + keys (see 2026-10-31 entry) |
 
 ## Waiting on
 
@@ -81,6 +81,17 @@ API (works once A1 core lands): `backend/run.sh` serves on `:8000`; the Vite dev
 
 ## Log
 
+### 2026-10-31: design review, frontend + backend integration, API slice 2 (`claude/bold-hopper-tsps3y`)
+- **Branch:** `gunbir/integration` + reviewed `claude/bob-web` (clean merge). Everything below is on `claude/bold-hopper-tsps3y`.
+- **Design review of Codex's work** (`6e3857d..e4fd613`), checked against UX_NOTES at 1440x900 and 390x844 with throwaway fixtures outside the repo. Fixed: the wordmark overlapped the step tracker on phones; the Report hero collapsed into a one-word column on phones; Plan's Start button is now a sticky bottom bar on phones; Setup had two submit buttons (composer arrow + Draft the plan); jargon (Jev triage, raw check names, case-type ids, job status ids); the Row screen always showed Build as the current step; the heatgrid clipped its headers on phones; Amplify UI (520 KB) loaded even with auth `none` (now its own lazy chunk).
+- **API slice 2 (G1):** `api/me.py` (`/me/aws/setup|template`, `PUT /me/aws`, `/me/aws/verify`, `PUT /me/models` with 422 / 501, `/me/models/verify`, `/me/models/available`), `api/sources.py` (`/connectors*` with a callback-only `redirect_url`, `/sources/preview` capped at 10 pages or 20 s), `api/results.py` (spot-check, export with preset / format checks, files + `/url` limited to the job's own file keys, presets, resync 501). Firecrawl `crawl()` gained an `on_page` hook for the preview.
+- **Contract fixes in the frontend:** the new model fields (`Cell.mix_*`, `CostSummary.by_purpose`, `Row.chunk_ids/absent_topic/premise_evidence_id`), the final `done` event, rows paged from the newest end (the store pages oldest first), source passages with the extracted facts highlighted inside them (spans carry document offsets), local-mode Account (default AWS chain, no role), plain 409 messages.
+- **Cost fix:** every screen called `/api/health` (one paid call per provider) on mount and every 60 s. Now one shared result, at most every 5 minutes, only while the tab is visible; the red chip opens the exact errors.
+- **P1:** `connectors/sync.py` (diff for re-sync), self sign-up switch (`signup` in `/config/public`), Bedrock model picker in the Models panel.
+- **Real local run:** `backend/run.sh` + `npm run dev` work together through the Vite proxy. Real calls through the browser: `/me`, `/me/aws/setup`, `PUT /me/aws`, `/me/aws/verify`, `PUT /me/models`, `/me/models/verify`, `/uploads` (3 smoke files), `POST /jobs` (412 with the real reason), `/connectors`, `/health`. Each provider error reached the UI word for word.
+- **Blocked:** the cloud session's network policy denies `api.typesafe.ai`, `api.scaledown.xyz`, `api.firecrawl.dev`, `backend.composio.dev` and `huggingface.co` (model2vec embeddings), and its AWS keys are invalid (`InvalidClientTokenId`). No call was stubbed.
+- **Tests:** full suite 148 passed; the 25 failures + 3 errors all need those providers, except the stale A1 assertion already logged.
+
 ### 2026-10-31: cleared the deploy path for A5 (`gunbir/integration`, `d4448fe`)
 - Merged Aaditya's latest `a1-core` (his own integration of A2/A3/A4 + `c3a260f`: new model fields `Cell.mix_weights/mix_kept`, `CostSummary.by_purpose`, `Row.chunk_ids/absent_topic/premise_evidence_id`; Jev + triage config defaults). Table conflict resolved by row, keeping his "done" statuses.
 - **Deploy blocker found and fixed:** a clean `pip install ./backend` (the Dockerfile step) gave an app that crashed at import (FastAPI needs `python-multipart` for `POST /uploads`), so the Lambda readiness check on `/api/ping` could never pass. Added `python-multipart` (+ dev `reportlab`) with `uv add`; pyproject + uv.lock updated.
@@ -127,7 +138,6 @@ API (works once A1 core lands): `backend/run.sh` serves on `:8000`; the Vite dev
 - About 20 Firecrawl credits used. `.env` holds `FIRECRAWL_API_KEY`; it is gitignored and never staged.
 
 ## Next
-1. Seed the demo Notion wiki once the parent page exists; cache it to `demo/corpus/notion/`.
-2. API slice 2: `/me/aws*`, `/me/models*`, `/connectors*` (on `connectors/composio.py`), `/sources/preview` (10 pages / 20 s cap), spot-check, export, files + `/url`, presets.
-3. `connectors/sync.py` (P1) so A1's resync can run.
-4. Frontend integration with the `claude/bob-web` session.
+1. Unblock the real run: allow the five hosts above in the cloud environment's network settings and add the keys as environment secrets (or run locally with `.env`), then run one job end to end on `demo/smoke/` and fix what breaks.
+2. Seed the demo Notion wiki once the parent page exists; cache it to `demo/corpus/notion/`.
+3. Jira and Confluence in `composio.py` (P1), researched with real calls at first use.
