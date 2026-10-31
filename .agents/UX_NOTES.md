@@ -9,7 +9,10 @@
 4. **Smart defaults.** 1,000 rows, $10, 25 pages, openai-chat JSONL. Show them as one line the user can change.
 5. **Silence when healthy.** Provider status is a green dot; it only becomes a chip when something fails. Errors and fallbacks always show.
 6. **Never hide what matters:** errors, budget overruns, rejected-row reasons, cancel.
-7. **Personality lives on the landing page.** Memes, looping Bob animations, floating cards and the blackout are for `/` only. Inside the app, Bob is a still image (`<Bob still float={false} />`), and motion is limited to short fades, progress bars and the row-arrival flash.
+7. **No hidden gestures.** Every action is a visible click target (no double-click or long-press only). Cells open a small card with an Include switch and a rows stepper.
+8. **Status and safety.** Show where the user is (the Sources → Plan → Build → Report tracker; later steps stay locked until reached), how long is left (Build ETA), and ask before anything irreversible (Cancel). Offer a way back (Reset to Bob's plan, Esc on the row screen).
+9. **Plain language.** Case types read "Answered by docs", "Partly covered", "Not in docs", "Wrong assumption", each with an icon and a one-line tooltip. Keyboard focus is always visible.
+10. **Personality lives on the landing page.** Memes, looping Bob animations, floating cards and the blackout are for `/` only. Inside the app, Bob is a still image (`<Bob still float={false} />`), and motion is limited to short fades, progress bars and the row-arrival flash.
 
 ## Screen by screen
 | Screen | Shows by default | Behind a click |

@@ -85,6 +85,18 @@ body {
   background-size: 22px 22px;
 }
 
+/* Visible keyboard focus everywhere (WCAG 2.4.7), never on mouse click. */
+/* The composer shows focus with its glow instead. */
+.no-ring:focus-visible {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-bob-sky);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
 .scroll-thin {
   scrollbar-width: thin;
   scrollbar-color: rgb(255 255 255 / 0.12) transparent;

@@ -4,7 +4,7 @@ import { motion } from "motion/react";
 import { Check, FileUp, Globe, Link2, Loader2, Plug, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { BrowseItem, ConnectorState, SourceSpec, Toolkit } from "../api/types";
-import { Button, ErrorBanner, Label } from "../components/ui";
+import { Button, ErrorBanner, Label, useTitle } from "../components/ui";
 
 const TOOLKIT_LABEL: Record<Toolkit, string> = { notion: "Notion", confluence: "Confluence", jira: "Jira", googledrive: "Google Drive" };
 
@@ -237,6 +237,7 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
   const [error, setError] = useState<ApiError | null>(null);
   const [tab, setTab] = useState<Tab>(() => (goal.match(URL_RE) || !initialFiles.length ? "website" : "files"));
   const [showOptions, setShowOptions] = useState(false);
+  useTitle("New dataset");
   const firstFiles = useRef(initialFiles);
 
   useEffect(() => {
@@ -308,10 +309,10 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
     })),
   ];
 
-  const TABS: { id: Tab; label: string; icon: ReactNode }[] = [
-    { id: "website", label: "Website", icon: <Globe className="size-4" /> },
-    { id: "files", label: "Files", icon: <FileUp className="size-4" /> },
-    { id: "apps", label: "Apps", icon: <Plug className="size-4" /> },
+  const TABS: { id: Tab; label: string; hint: string; tone: string; icon: ReactNode }[] = [
+    { id: "website", label: "Website", hint: "A docs or help site", tone: "bg-bob-blue/25 text-bob-sky", icon: <Globe className="size-4" /> },
+    { id: "files", label: "Files", hint: "PDF, Markdown, CSV…", tone: "bg-bob-mint/20 text-bob-mint", icon: <FileUp className="size-4" /> },
+    { id: "apps", label: "Apps", hint: "Notion, Jira, Drive…", tone: "bg-bob-yellow/20 text-bob-yellow", icon: <Plug className="size-4" /> },
   ];
 
   return (
@@ -330,19 +331,24 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
       )}
 
       <motion.section {...rise(1)} className="rounded-2xl bg-panel p-1.5">
-        <div className="grid grid-cols-3 gap-1" role="tablist">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              role="tab"
-              aria-selected={tab === t.id}
-              onClick={() => setTab(t.id)}
-              className={`flex items-center justify-center gap-2 rounded-xl py-2 text-[13.5px] transition ${tab === t.id ? "bg-white/[0.08] text-white" : "text-dim hover:text-white"}`}
-            >
-              {t.icon}
-              {t.label}
-            </button>
-          ))}
+        <div className="grid grid-cols-3 gap-1.5" role="tablist">
+          {TABS.map((t) => {
+            const n = t.id === "website" ? (url.trim() ? 1 : 0) : t.id === "files" ? uploads.files.length : pickedApps.reduce((a, c) => a + c.picked.length, 0);
+            return (
+              <button
+                key={t.id}
+                role="tab"
+                aria-selected={tab === t.id}
+                onClick={() => setTab(t.id)}
+                className={`relative flex flex-col items-center gap-1.5 rounded-xl px-2 py-3 text-center transition ${tab === t.id ? "bg-white/[0.08] text-white" : "text-dim hover:bg-white/[0.03] hover:text-white"}`}
+              >
+                <span className={`grid size-9 place-items-center rounded-full ${tab === t.id ? t.tone : "bg-white/5"}`}>{t.icon}</span>
+                <span className="text-[13.5px] font-medium">{t.label}</span>
+                <span className="hidden text-[11px] text-dim sm:block">{t.hint}</span>
+                {n > 0 && <span className="absolute right-2 top-2 grid min-w-5 place-items-center rounded-full bg-bob-mint px-1 text-[10.5px] font-bold text-bob-navy">{n}</span>}
+              </button>
+            );
+          })}
         </div>
 
         <div className="p-3">
@@ -357,6 +363,7 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
                   className="w-full bg-transparent py-2.5 text-[14px] outline-none placeholder:text-dim"
                 />
               </div>
+              {url.trim() && !URL_RE.test(url.trim()) && <div className="mt-1.5 text-[12px] text-bob-yellow">That doesn't look like a web address yet, for example docs.yourproduct.com</div>}
               <div className="mt-2 flex items-center gap-3 text-[12px] text-dim">
                 <span>
                   Reads up to{" "}

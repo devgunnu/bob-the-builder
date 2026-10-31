@@ -1,5 +1,5 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { AlertTriangle, BookCheck, BookOpen, Loader2, SearchX, ShieldQuestion, type LucideIcon } from "lucide-react";
 import type { ApiError } from "../api/client";
 
 export function Panel({ title, action, children, className = "" }: { title?: ReactNode; action?: ReactNode; children: ReactNode; className?: string }) {
@@ -62,9 +62,60 @@ export function Label({ children }: { children: ReactNode }) {
   return <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-dim">{children}</div>;
 }
 
+// $0.31, $4.10, $0.004: two decimals unless the amount is under ten cents.
 export const usd = (n: number | undefined | null, digits?: number) =>
-  n === undefined || n === null ? "–" : `$${n.toFixed(digits ?? (n < 1 ? 3 : 2))}`;
+  n === undefined || n === null ? "–" : `$${n.toFixed(digits ?? (n > 0 && n < 0.1 ? 3 : 2))}`;
 
 export const pct = (n: number | undefined | null) => (n === undefined || n === null ? "–" : `${Math.round(n * 100)}%`);
 
-export const caseLabel = (c: string) => c.replace(/_/g, " ");
+export const caseLabel = (c: string) => CASE_INFO[c]?.label ?? DIFF_LABEL[c] ?? c.replace(/_/g, " ");
+
+// Plain-language names for CONTRACTS case types and difficulties, so nobody has to learn our jargon.
+export const CASE_INFO: Record<string, { label: string; hint: string; icon: LucideIcon; tone: string }> = {
+  answerable: { label: "Answered by docs", hint: "The docs fully answer the question.", icon: BookCheck, tone: "text-bob-mint" },
+  partial: { label: "Partly covered", hint: "The docs answer part of it; the reply says what's missing.", icon: BookOpen, tone: "text-bob-sky" },
+  unanswerable: { label: "Not in docs", hint: "The docs don't cover it; the reply says so and hands off.", icon: SearchX, tone: "text-bob-yellow" },
+  false_premise: { label: "Wrong assumption", hint: "The user assumes something false; the reply corrects it.", icon: ShieldQuestion, tone: "text-orange-300" },
+};
+export const DIFF_LABEL: Record<string, string> = { single_fact: "One fact", multi_step: "A few steps", multi_doc: "Across pages" };
+
+export function CaseHeader({ c }: { c: string }) {
+  const info = CASE_INFO[c];
+  if (!info) return <span className="capitalize">{caseLabel(c)}</span>;
+  const Icon = info.icon;
+  return (
+    <span className="flex items-center gap-1.5" title={info.hint}>
+      <Icon className={`size-3.5 shrink-0 ${info.tone}`} />
+      <span className="leading-tight">{info.label}</span>
+    </span>
+  );
+}
+
+/** Two-step button for actions that can't be undone (error prevention). */
+export function ConfirmButton({ label, confirm, onConfirm, className = "" }: { label: string; confirm: string; onConfirm: () => void; className?: string }) {
+  const [asking, setAsking] = useState(false);
+  useEffect(() => {
+    if (!asking) return;
+    const t = window.setTimeout(() => setAsking(false), 5000);
+    return () => window.clearTimeout(t);
+  }, [asking]);
+  if (!asking)
+    return (
+      <button onClick={() => setAsking(true)} className={`text-[12.5px] text-dim hover:text-rose-300 ${className}`}>
+        {label}
+      </button>
+    );
+  return (
+    <span className={`inline-flex items-center gap-2 text-[12.5px] ${className}`}>
+      <span className="text-white/80">{confirm}</span>
+      <button onClick={() => (setAsking(false), onConfirm())} className="rounded-lg bg-rose-500/80 px-2.5 py-1 text-white hover:bg-rose-500">Yes, stop</button>
+      <button onClick={() => setAsking(false)} className="rounded-lg px-2.5 py-1 text-dim hover:text-white">Keep going</button>
+    </span>
+  );
+}
+
+export function useTitle(title: string) {
+  useEffect(() => {
+    document.title = title ? `${title} · Bob` : "Bob the Builder";
+  }, [title]);
+}

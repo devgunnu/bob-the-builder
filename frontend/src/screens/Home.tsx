@@ -65,7 +65,7 @@ export default function Home() {
 
         {phase === "setup" && (
           <motion.div className="absolute inset-0" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}>
-            <AppShell pose="idea" title="New dataset">
+            <AppShell pose="idea" title="New dataset" step="sources">
               <SetupScreen
                 goal={goal}
                 initialFiles={files}

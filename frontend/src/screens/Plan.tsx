@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { motion } from "motion/react";
-import { Loader2, Pencil, Play, SlidersHorizontal, X } from "lucide-react";
+import { Loader2, Minus, Pencil, Play, Plus, RotateCcw, SlidersHorizontal, X } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { Axis, Cell, Plan, StageName } from "../api/types";
 import { useJobStream, type JobStream } from "../api/useJobStream";
 import { AppShell } from "../components/AppShell";
 import { Bob } from "../components/Bob";
-import { Button, ErrorBanner, Label, caseLabel, usd } from "../components/ui";
+import { Button, CASE_INFO, CaseHeader, ConfirmButton, ErrorBanner, Label, caseLabel, usd, useTitle } from "../components/ui";
 
 const READ_STAGES: { id: StageName; label: string }[] = [
   { id: "fetch", label: "Fetch sources" },
@@ -56,7 +56,7 @@ function ReadingView({ s, onCancel }: { s: JobStream; onCancel: () => void }) {
       </div>
       {!failed && (
         <>
-          <button onClick={onCancel} className="mt-8 text-[12.5px] text-dim hover:text-rose-300">Cancel this job</button>
+          <ConfirmButton className="mt-8" label="Cancel this job" confirm="Stop reading and cancel?" onConfirm={onCancel} />
         </>
       )}
     </div>
@@ -71,19 +71,19 @@ function PlanGrid({ plan, setCells, showFilters }: { plan: Plan; setCells: (fn: 
   const diffs = plan.axes.find((a) => a.name === "difficulty")?.values ?? [];
   const [persona, setPersona] = useState("");
   const [diff, setDiff] = useState("");
-  const [editing, setEditing] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
 
   const match = (c: Cell, t?: string, cs?: string) =>
     (!t || c.coords.topic === t) && (!cs || c.coords.case_type === cs) && (!persona || c.coords.persona === persona) && (!diff || c.coords.difficulty === diff);
 
+  const setOn = (on: boolean, t?: string, cs?: string) => setCells((cells) => cells.map((c) => (match(c, t, cs) ? { ...c, enabled: on } : c)));
   const toggle = (t?: string, cs?: string) =>
     setCells((cells) => {
-      const sel = cells.filter((c) => match(c, t, cs));
-      const turnOn = sel.some((c) => !c.enabled);
+      const turnOn = cells.filter((c) => match(c, t, cs)).some((c) => !c.enabled);
       return cells.map((c) => (match(c, t, cs) ? { ...c, enabled: turnOn } : c));
     });
-
-  const setTarget = (t: string, cs: string, v: number) => setCells((cells) => cells.map((c) => (match(c, t, cs) ? { ...c, target: Math.max(0, v) } : c)));
+  // Rows per matching cell; the popover shows and edits that number.
+  const setPer = (t: string, cs: string, v: number) => setCells((cells) => cells.map((c) => (match(c, t, cs) ? { ...c, target: Math.max(1, v) } : c)));
 
   const sel = (label: string, value: string, set: (v: string) => void, values: string[]) =>
     values.length > 1 && (
@@ -97,24 +97,26 @@ function PlanGrid({ plan, setCells, showFilters }: { plan: Plan; setCells: (fn: 
     );
 
   return (
-    <div>
+    <div onKeyDown={(e) => e.key === "Escape" && setOpen(null)}>
       {showFilters && (
-        <div className="mb-2 flex flex-wrap items-center gap-3">
+        <div className="mb-3 flex flex-wrap items-center gap-3">
           {sel("persona", persona, setPersona, personas)}
           {sel("difficulty", diff, setDiff, diffs)}
         </div>
       )}
-      <div className="scroll-thin overflow-x-auto">
-        <table className="w-full table-fixed border-separate" style={{ borderSpacing: 4 }}>
+      <div className="scroll-thin overflow-x-auto pb-1 md:overflow-visible">
+        <table className="w-full min-w-[520px] table-fixed border-separate" style={{ borderSpacing: 6 }}>
           <colgroup>
-            <col className="w-[34%] sm:w-[26%]" />
+            <col className="w-[24%]" />
           </colgroup>
           <thead>
             <tr>
               <th />
               {cases.map((c) => (
                 <th key={c} className="p-0">
-                  <button onClick={() => toggle(undefined, c)} className="w-full rounded-md px-1 pb-1 text-left text-[11px] font-medium capitalize text-dim hover:text-white">{caseLabel(c)}</button>
+                  <button onClick={() => toggle(undefined, c)} title={`${CASE_INFO[c]?.hint ?? ""} Click to turn the whole column on or off.`} className="w-full rounded-md px-1 pb-1 text-left text-[11.5px] font-medium text-white/70 hover:text-white">
+                    <CaseHeader c={c} />
+                  </button>
                 </th>
               ))}
             </tr>
@@ -122,40 +124,52 @@ function PlanGrid({ plan, setCells, showFilters }: { plan: Plan; setCells: (fn: 
           <tbody>
             {topics.map((t) => (
               <tr key={t}>
-                <th className="max-w-[200px] p-0 pr-2 text-left">
-                  <button onClick={() => toggle(t)} title={plan.axes.find((a) => a.name === "topic")?.descriptions[t] ?? t} className="w-full truncate text-left text-[12px] font-medium text-white/80 hover:text-white">{t}</button>
+                <th className="p-0 pr-2 text-left">
+                  <button onClick={() => toggle(t)} title={`${plan.axes.find((a) => a.name === "topic")?.descriptions[t] ?? t}. Click to turn the whole row on or off.`} className="w-full truncate text-left text-[13px] font-medium text-white/85 hover:text-white">{t}</button>
                 </th>
                 {cases.map((cs) => {
                   const m = plan.cells.filter((c) => match(c, t, cs));
                   const on = m.filter((c) => c.enabled);
                   const sum = on.reduce((a, c) => a + c.target, 0);
                   const key = `${t}|${cs}`;
-                  const partial = on.length > 0 && on.length < m.length;
+                  const per = (on[0] ?? m[0])?.target ?? 0;
                   return (
-                    <td key={cs} className="p-0">
-                      {editing === key ? (
-                        <input
-                          autoFocus
-                          type="number"
-                          min={0}
-                          defaultValue={on[0]?.target ?? m[0]?.target ?? 0}
-                          onBlur={(e) => (setTarget(t, cs, Number(e.target.value) || 0), setEditing(null))}
-                          onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-                          className="h-9 w-full rounded-lg border border-bob-yellow bg-panel-2 text-center font-mono text-[12px] outline-none"
-                        />
-                      ) : (
-                        <button
-                          onClick={() => toggle(t, cs)}
-                          onDoubleClick={() => setEditing(key)}
-                          disabled={!m.length}
-                          className={`h-10 w-full rounded-lg font-mono text-[12px] transition ${
-                            !m.length ? "opacity-20" : on.length ? "bg-bob-blue/30 text-white hover:bg-bob-blue/45" : "bg-white/[0.02] text-dim/60 hover:text-white"
-                          }`}
-                          title={`${sum} rows · click to turn ${on.length ? "off" : "on"} · double-click to change rows`}
-                        >
-                          {on.length ? sum : "off"}
-                          {partial && <span className="ml-1 text-[9px] text-bob-yellow">{on.length}/{m.length}</span>}
-                        </button>
+                    <td key={cs} className="relative p-0">
+                      <button
+                        onClick={() => setOpen(open === key ? null : key)}
+                        disabled={!m.length}
+                        aria-expanded={open === key}
+                        aria-label={`${t}, ${caseLabel(cs)}: ${on.length ? `${sum} rows` : "off"}`}
+                        className={`h-11 w-full rounded-xl text-[13px] transition ${
+                          !m.length ? "opacity-20" : on.length ? "bg-bob-blue/25 text-white hover:bg-bob-blue/40" : "border border-dashed border-white/10 text-dim/70 hover:text-white"
+                        } ${open === key ? "ring-2 ring-bob-sky" : ""}`}
+                      >
+                        {on.length ? <span className="font-medium tabular-nums">{sum}</span> : <span className="text-[11.5px]">off</span>}
+                      </button>
+                      {open === key && (
+                        <div role="dialog" aria-label={`${t}, ${caseLabel(cs)}`} className="absolute left-1/2 top-full z-20 mt-2 w-56 -translate-x-1/2 rounded-2xl border border-line bg-panel-2 p-3 text-left shadow-2xl shadow-black/60">
+                          <div className="mb-2 text-[12px] text-dim">{t} · {caseLabel(cs)}</div>
+                          <label className="flex items-center justify-between text-[13px]">
+                            Include
+                            <button
+                              role="switch"
+                              aria-checked={on.length > 0}
+                              onClick={() => setOn(on.length === 0, t, cs)}
+                              className={`relative h-5 w-9 rounded-full transition ${on.length ? "bg-bob-mint" : "bg-white/15"}`}
+                            >
+                              <span className={`absolute top-0.5 size-4 rounded-full bg-white transition-all ${on.length ? "left-[18px]" : "left-0.5"}`} />
+                            </button>
+                          </label>
+                          <div className={`mt-3 flex items-center justify-between text-[13px] ${on.length ? "" : "pointer-events-none opacity-40"}`}>
+                            <span>Rows{m.length > 1 && <span className="ml-1 text-[11px] text-dim">×{m.length}</span>}</span>
+                            <span className="flex items-center gap-1">
+                              <button aria-label="Fewer rows" onClick={() => setPer(t, cs, per - 5)} className="grid size-7 place-items-center rounded-lg bg-white/5 hover:bg-white/10"><Minus className="size-3.5" /></button>
+                              <span className="w-8 text-center tabular-nums">{per}</span>
+                              <button aria-label="More rows" onClick={() => setPer(t, cs, per + 5)} className="grid size-7 place-items-center rounded-lg bg-white/5 hover:bg-white/10"><Plus className="size-3.5" /></button>
+                            </span>
+                          </div>
+                          <button onClick={() => setOpen(null)} className="mt-3 w-full rounded-lg bg-white/5 py-1.5 text-[12.5px] text-white/80 hover:bg-white/10">Done</button>
+                        </div>
                       )}
                     </td>
                   );
@@ -250,6 +264,8 @@ function PlanEditor({ s, jobId }: { s: JobStream; jobId: string }) {
   const budget = s.job?.spec.budget_usd ?? 10;
   const locked = s.status !== "awaiting_approval";
   const count = (axis: string) => new Set(on.map((c) => c.coords[axis])).size;
+  const edited = useMemo(() => JSON.stringify(draft) !== JSON.stringify(s.plan), [draft, s.plan]);
+  useTitle("Plan");
 
   const start = async () => {
     setBusy(true);
@@ -295,9 +311,16 @@ function PlanEditor({ s, jobId }: { s: JobStream; jobId: string }) {
       <section className="rounded-2xl bg-panel p-4">
         <div className="mb-3 flex items-center gap-2">
           <h2 className="font-display text-[16px] font-bold">What Bob will write</h2>
-          <span className="ml-auto text-[11.5px] text-dim">Click to turn on or off · double-click to change rows</span>
+          <span className="ml-auto text-[11.5px] text-dim">Click a cell to change it · click a row or column name to switch it all</span>
         </div>
         <PlanGrid plan={draft} showFilters={advanced} setCells={(fn) => setDraft((d) => ({ ...d, cells: fn(d.cells) }))} />
+        <div className="mt-3 flex items-center gap-3 text-[12px] text-dim">
+          <span className="flex items-center gap-1.5"><span className="size-3 rounded bg-bob-blue/40" /> included</span>
+          <span className="flex items-center gap-1.5"><span className="size-3 rounded border border-dashed border-white/25" /> off</span>
+          {edited && !locked && (
+            <button onClick={() => setDraft(structuredClone(s.plan!))} className="ml-auto flex items-center gap-1 text-bob-sky hover:underline"><RotateCcw className="size-3.5" /> Reset to Bob's plan</button>
+          )}
+        </div>
         {est > budget && <div className="mt-3 text-[12.5px] text-rose-300">This is over budget. Bob stops writing at 95% of the budget, or turn off some cells.</div>}
       </section>
 
@@ -334,7 +357,7 @@ export default function PlanScreen() {
   useEffect(() => setCancelError(null), [id]);
 
   return (
-    <AppShell pose={s.plan ? "idea" : "think"} title={s.job?.spec.goal}>
+    <AppShell pose={s.plan ? "idea" : "think"} title={s.job?.spec.goal} step="plan" status={s.status} hasReport={!!s.report}>
       {s.loadError ? (
         <div className="mx-auto max-w-3xl p-6"><ErrorBanner error={s.loadError} title="Couldn't load this job" /></div>
       ) : s.plan ? (
