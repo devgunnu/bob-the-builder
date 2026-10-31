@@ -258,10 +258,6 @@ class Orchestrator:
         if user.models_verified_at is None:
             raise PreconditionFailed("verify models first")
 
-        check = getattr(self.runner, "check_capacity", None)
-        if check is not None:
-            await check(user.id)  # RunnerBusy -> 429, nothing saved
-
         now = _now()
         job = Job(
             id=uuid.uuid4().hex[:12],
@@ -272,12 +268,21 @@ class Orchestrator:
             created_at=now,
             updated_at=now,
         )
-        await self.store.put_job(job)
-        await self.events.append(job.id, "job.status", {"status": job.status.value, "detail": ""})
-        await self.events.append(
-            job.id, "stage.progress", {"stage": "fetch", "done": 0, "total": 0, "detail": "starting worker"}
-        )
+        reserve = getattr(self.runner, "reserve", None)
+        if reserve is not None:
+            await reserve(job.id, user.id)  # atomically reserve AWS capacity before saving
+        else:
+            check = getattr(self.runner, "check_capacity", None)
+            if check is not None:
+                await check(user.id)
         try:
+            await self.store.put_job(job)
+            await self.events.append(job.id, "job.status", {"status": job.status.value, "detail": ""})
+            await self.events.append(
+                job.id,
+                "stage.progress",
+                {"stage": "fetch", "done": 0, "total": 0, "detail": "starting worker"},
+            )
             await self.runner.start(job.id, "create")
         except RunnerBusy:
             job.status = JobStatus.error
@@ -285,6 +290,10 @@ class Orchestrator:
             job.updated_at = _now()
             await self.store.put_job(job)
             await self.events.append(job.id, "error", {"message": job.error})
+            raise
+        except BaseException:
+            if reserve is not None:
+                await self.runner.release(job.id)
             raise
         return job
 

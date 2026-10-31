@@ -1,0 +1,45 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Bob deployment project (the project role has administrator access).
+Parameters:
+  RepositoryUrl:
+    Type: String
+  Branch:
+    Type: String
+Resources:
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: codebuild.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AdministratorAccess'
+  Project:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: bob-infrastructure-deploy
+      ServiceRole: !GetAtt DeployRole.Arn
+      Source:
+        Type: GITHUB
+        Location: !Ref RepositoryUrl
+        BuildSpec: infra/buildspec.yml
+      SourceVersion: !Ref Branch
+      Artifacts: {Type: NO_ARTIFACTS}
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+        PrivilegedMode: true
+      TimeoutInMinutes: 60
+      Triggers:
+        Webhook: true
+        FilterGroups:
+          - - {Type: EVENT, Pattern: PUSH}
+            - Type: HEAD_REF
+              Pattern: !Sub '^refs/heads/${Branch}$'
+Outputs:
+  ProjectName:
+    Value: !Ref Project
