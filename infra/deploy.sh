@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 1 ]]; then echo "Usage: $0 <aws-profile>" >&2; exit 2; fi
-export AWS_PROFILE="$1" AWS_PAGER=""
+if [[ $# -gt 1 ]]; then echo "Usage: $0 [aws-profile]" >&2; exit 2; fi
+if [[ $# -eq 1 ]]; then export AWS_PROFILE="$1"; fi
+export AWS_PAGER=""
 read -r -p "AWS region: " AWS_REGION
 export AWS_REGION AWS_DEFAULT_REGION="$AWS_REGION"
 read -r -p "GitHub repository URL (https://github.com/owner/repo.git): " repo
