@@ -142,6 +142,27 @@ async def post_json(
     raise last
 
 
+_DROP_KEYS = ("minimum", "maximum", "minItems", "maxItems", "minLength", "maxLength", "pattern", "format")
+
+
+def strict_schema(schema: Any) -> Any:
+    """Copy of a JSON schema that strict structured-output modes accept: every object gets
+    `additionalProperties: false` and all its properties as `required`; numeric/length limits are removed
+    (seen on Bedrock Converse 2026-10-30: "'additionalProperties' must be explicitly set to false").
+    """
+    if isinstance(schema, list):
+        return [strict_schema(s) for s in schema]
+    if not isinstance(schema, dict):
+        return schema
+    out = {k: strict_schema(v) for k, v in schema.items() if k not in _DROP_KEYS}
+    if out.get("type") == "object":
+        props = out.get("properties") or {}
+        out["properties"] = props
+        out["required"] = list(props)
+        out["additionalProperties"] = False
+    return out
+
+
 async def emit_log(job: Job, level: str, message: str) -> None:
     """`log` SSE event (CONTRACTS section 8) for the job."""
     from bob.core.backends import get_events
@@ -271,14 +292,14 @@ def _llm_schema(questions: list[Question]) -> dict:
     props: dict[str, Any] = {}
     for q in questions:
         if q.type == "noul":
-            props[q.id] = {"type": "number", "minimum": 0, "maximum": 1}
+            props[q.id] = {"type": "number"}
         else:
             names = q.options if q.type == "choice" else q.levels
             props[q.id] = {
                 "type": "object",
                 "properties": {
                     "answer": {"type": "string", "enum": list(names or [])},
-                    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                    "confidence": {"type": "number"},
                 },
                 "required": ["answer", "confidence"],
             }
@@ -304,7 +325,9 @@ async def _llm_fallback(state: str, questions: list[Question], *, job: Job) -> d
 
     llm = get_llm(job, "fallback")
     msg = [Message(role="user", content=_llm_prompt(state, questions))]
-    data, _usage = await llm.complete_json("fallback", _LLM_SYSTEM, msg, _llm_schema(questions))
+    data, _usage = await llm.complete_json(
+        "fallback", _LLM_SYSTEM, msg, strict_schema(_llm_schema(questions))
+    )
     out: dict[str, Decision] = {}
     for q in questions:
         a = data[q.id]

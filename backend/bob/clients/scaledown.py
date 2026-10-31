@@ -25,7 +25,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from bob.clients.jev import ClientError, note_fallback, post_json, record_cost
+from bob.clients.jev import ClientError, note_fallback, post_json, record_cost, strict_schema
 from bob.config import settings_for
 from bob.core.models import Job, Message
 
@@ -240,8 +240,20 @@ async def _extract_llm(text: str, schema: dict, *, job: Job) -> list[ExtractFiel
     from bob.llm.client import get_llm
 
     llm = get_llm(job, "fallback")
+    if is_entities_map(schema):  # the fallback model needs a JSON schema: one string list per entity type
+        schema = {
+            "type": "object",
+            "properties": {
+                k: {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": v if isinstance(v, str) else "",
+                }
+                for k, v in schema.items()
+            },
+        }
     data, _usage = await llm.complete_json(
-        "fallback", _EXTRACT_SYSTEM, [Message(role="user", content=f"TEXT:\n{text}")], schema
+        "fallback", _EXTRACT_SYSTEM, [Message(role="user", content=f"TEXT:\n{text}")], strict_schema(schema)
     )
     return fields_from_result(text, data)
 

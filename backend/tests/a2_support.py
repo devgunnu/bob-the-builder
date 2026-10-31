@@ -40,7 +40,7 @@ os.environ.setdefault("BOB_ENV", "local")
 if os.environ.get("BOB_ENV") != "aws":
     os.environ["BOB_SECRET_ARN"] = ""
 
-from bob.config import default_model_roles, get_settings  # noqa: E402
+from bob.config import default_bedrock_access, default_model_roles, get_settings  # noqa: E402
 from bob.core.models import Job, JobSpec, SourceSpec  # noqa: E402
 
 get_settings.cache_clear()
@@ -50,7 +50,13 @@ def make_job(job_id: str = "a2-test", goal: str = "support assistant for the Bob
     now = datetime.now(UTC)
     spec = JobSpec(goal=goal, sources=[SourceSpec(kind="upload", upload_ids=["a2"])], target_rows=20)
     return Job(
-        id=job_id, spec=spec, owner_id="local", models=default_model_roles(), created_at=now, updated_at=now
+        id=job_id,
+        spec=spec,
+        owner_id="local",
+        bedrock=default_bedrock_access(),
+        models=default_model_roles(),
+        created_at=now,
+        updated_at=now,
     )
 
 
