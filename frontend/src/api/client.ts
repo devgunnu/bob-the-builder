@@ -81,6 +81,37 @@ async function request<T>(path: string, init: RequestInit = {}, raw = false): Pr
 }
 
 const json = (body: unknown): RequestInit => ({ body: JSON.stringify(body) });
+
+// API Gateway / Lambda take 6 MB per request; leave room for the multipart overhead.
+const BATCH_LIMIT_BYTES = 5 * 1024 * 1024;
+
+interface Presigned {
+  upload_id: string;
+  put_url: string;
+  method: string;
+  headers: Record<string, string>;
+  name: string;
+  bytes: number;
+}
+
+async function uploadDirect(file: File): Promise<{ id: string; name: string; bytes: number }> {
+  const p = await request<Presigned>("/uploads/presign", { method: "POST", ...json({ name: file.name, bytes: file.size, content_type: file.type || null }) });
+  const init: RequestInit = { method: p.method || "PUT", body: file, headers: p.headers };
+  if (p.put_url.startsWith(API_BASE + "/")) {
+    // Local mode: our own API receives the bytes, so it needs the Authorization header.
+    await request<unknown>(p.put_url.slice(API_BASE.length), init);
+  } else {
+    // aws: a presigned S3 URL. No Authorization header (S3 would reject the request).
+    let res: Response;
+    try {
+      res = await fetch(p.put_url, init);
+    } catch (e) {
+      throw new ApiError(0, `Couldn't upload ${file.name}.`, "s3", String(e));
+    }
+    if (!res.ok) throw new ApiError(res.status, `Couldn't upload ${file.name}.`, "s3", (await res.text()).slice(0, 300));
+  }
+  return { id: p.upload_id, name: p.name, bytes: p.bytes };
+}
 // File names are paths like "openai-chat/train/train.jsonl": keep the slashes.
 const filePath = (name: string) => name.split("/").map(encodeURIComponent).join("/");
 
@@ -98,10 +129,33 @@ export const api = {
     request<UserProfile>("/me/models", { method: "PUT", ...json(api_keys && Object.keys(api_keys).length ? { ...roles, api_keys } : roles) }),
   availableModels: () => request<AvailableModels>("/me/models/available"),
   verifyModels: () => request<{ ok: boolean; roles: Record<string, string> }>("/me/models/verify", { method: "POST" }),
-  upload(files: File[]) {
-    const fd = new FormData();
-    files.forEach((f) => fd.append("files", f));
-    return request<UploadResult>("/uploads", { method: "POST", body: fd });
+  /** Small files go up in multipart batches under the 6 MB request limit; bigger ones
+   *  through POST /uploads/presign and a direct PUT (S3 in aws mode, this API locally). */
+  async upload(files: File[]): Promise<UploadResult> {
+    const out: UploadResult = { upload_ids: [], files: [] };
+    const add = (r: UploadResult) => (out.upload_ids.push(...r.upload_ids), out.files.push(...r.files));
+    let batch: File[] = [];
+    let size = 0;
+    const flush = async () => {
+      if (!batch.length) return;
+      const fd = new FormData();
+      batch.forEach((f) => fd.append("files", f));
+      add(await request<UploadResult>("/uploads", { method: "POST", body: fd }));
+      batch = [];
+      size = 0;
+    };
+    for (const f of files) {
+      if (f.size > BATCH_LIMIT_BYTES) {
+        const one = await uploadDirect(f);
+        add({ upload_ids: [one.id], files: [one] });
+        continue;
+      }
+      if (size + f.size > BATCH_LIMIT_BYTES) await flush();
+      batch.push(f);
+      size += f.size;
+    }
+    await flush();
+    return out;
   },
   connectors: () => request<ConnectorState[]>("/connectors"),
   connect: (toolkit: Toolkit, redirect_url: string) =>
