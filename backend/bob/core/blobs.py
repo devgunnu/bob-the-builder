@@ -24,6 +24,17 @@ class Blobs(Protocol):
         """aws: presigned GET (1 h); local: None (the route streams the file)."""
         ...
 
+    async def put_url(
+        self,
+        key: str,
+        content_type: str | None = None,
+        content_length: int | None = None,
+        expires_s: int = 900,
+    ) -> str | None:
+        """aws: presigned PUT for a direct browser upload (added by G1 for /uploads/presign);
+        local: None (the API accepts the bytes itself, it has no 6 MB request limit)."""
+        ...
+
 
 class LocalBlobs:
     def __init__(self, runs_dir: Path | None = None):
@@ -100,4 +111,14 @@ class LocalBlobs:
         return await asyncio.to_thread(_copy)
 
     async def url(self, key: str, filename: str | None = None) -> str | None:
+        return None
+
+    async def put_url(
+        self,
+        key: str,
+        content_type: str | None = None,
+        content_length: int | None = None,
+        expires_s: int = 900,
+    ) -> str | None:
+        self.path_for(key)  # same key check as put()
         return None

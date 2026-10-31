@@ -1,10 +1,15 @@
 """S3 implementation of the blob protocol."""
 
+# Needed: the class defines a method named `list`, so an evaluated `list[str]` annotation
+# inside the class body would refer to that method and fail with TypeError at import.
+from __future__ import annotations
+
 import asyncio
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from bob.config import get_settings
@@ -26,6 +31,9 @@ class S3Blobs:
         if not self.bucket:
             raise ValueError("BOB_BUCKET is required")
         self.client = boto3.client("s3")
+        # SigV4 for upload URLs: it signs Content-Length (SigV2, boto3's default for presigned S3
+        # URLs in some regions, signs only Content-Type, so any size would be accepted).
+        self._upload_signer = boto3.client("s3", config=Config(signature_version="s3v4"))
 
     async def put(self, key: str, data: bytes, content_type: str | None = None) -> None:
         args = {"Bucket": self.bucket, "Key": _key(key), "Body": data}
@@ -71,6 +79,25 @@ class S3Blobs:
             await asyncio.to_thread(self.client.upload_file, str(path), self.bucket, key)
             keys.append(key)
         return keys
+
+    async def put_url(
+        self,
+        key: str,
+        content_type: str | None = None,
+        content_length: int | None = None,
+        expires_s: int = 900,
+    ) -> str:
+        """Presigned PUT (added by G1 for /uploads/presign). Content-Type and Content-Length are
+        signed, so S3 rejects an upload with another type or size. The data bucket needs a CORS rule
+        allowing PUT from BOB_PUBLIC_URL (A5)."""
+        params: dict = {"Bucket": self.bucket, "Key": _key(key)}
+        if content_type:
+            params["ContentType"] = content_type
+        if content_length is not None:
+            params["ContentLength"] = content_length
+        return await asyncio.to_thread(
+            self._upload_signer.generate_presigned_url, "put_object", Params=params, ExpiresIn=expires_s
+        )
 
     async def url(self, key: str, filename: str | None = None) -> str:
         params = {"Bucket": self.bucket, "Key": _key(key)}

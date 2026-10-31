@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
+import mimetypes
 import re
 import uuid
 from collections.abc import Awaitable, Callable
@@ -29,6 +31,9 @@ ALLOWED_EXTENSIONS = SUPPORTED_EXTENSIONS + SEED_EXTENSIONS
 UPLOAD_ID = re.compile(r"[0-9a-f]{32}")
 MAX_NAME_CHARS = 150
 OWNER_MARKER = ".owner"  # safe_name() strips leading dots, so no user file can take this name
+PRESIGN_MARKER = ".presign"  # {name, bytes, content_type} for a direct (presigned) upload
+MARKERS = (OWNER_MARKER, PRESIGN_MARKER)
+MAX_PRESIGN_BYTES = 200 * 1024 * 1024
 
 Progress = Callable[[int, int, str], Awaitable[None]]
 
@@ -112,10 +117,70 @@ async def read_upload(upload_id: str, *, owner_id: str | None = None) -> list[tu
         await check_owner([upload_id], owner_id)
     blobs = get_blobs()
     prefix = f"{UPLOAD_PREFIX}/{upload_id}/"
-    keys = sorted(k for k in await blobs.list(prefix) if k != prefix + OWNER_MARKER)
+    keys = sorted(k for k in await blobs.list(prefix) if k[len(prefix) :] not in MARKERS)
     if not keys:
         raise UploadNotFound(f"upload {upload_id!r} not found")
     return [(key[len(prefix) :], await blobs.get(key)) for key in keys]
+
+
+@dataclass(frozen=True)
+class PresignedUpload:
+    id: str
+    name: str
+    bytes: int
+    content_type: str
+    key: str
+
+
+def content_type_for(name: str) -> str:
+    return mimetypes.guess_type(name)[0] or "application/octet-stream"
+
+
+async def presign_upload(
+    name: str, size: int, *, owner_id: str, content_type: str | None = None
+) -> PresignedUpload:
+    """Reserve an upload id for a direct upload of one file (POST /uploads/presign)."""
+    clean = safe_name(name)
+    ext = PurePath(clean).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        allowed = ", ".join(ALLOWED_EXTENSIONS)
+        raise UploadError(f"{name}: unsupported file type '{ext or 'none'}' (allowed: {allowed})")
+    if size <= 0:
+        raise UploadError(f"{name}: file is empty")
+    if size > MAX_PRESIGN_BYTES:
+        raise UploadError(f"{name}: {size} bytes is over the {MAX_PRESIGN_BYTES // (1024 * 1024)} MB limit")
+    upload = PresignedUpload(
+        id=uuid.uuid4().hex,
+        name=clean,
+        bytes=size,
+        content_type=content_type or content_type_for(clean),
+        key="",
+    )
+    upload = PresignedUpload(**{**upload.__dict__, "key": f"{UPLOAD_PREFIX}/{upload.id}/{clean}"})
+    blobs = get_blobs()
+    meta = {"name": upload.name, "bytes": upload.bytes, "content_type": upload.content_type}
+    await blobs.put(f"{UPLOAD_PREFIX}/{upload.id}/{OWNER_MARKER}", owner_id.encode(), "text/plain")
+    await blobs.put(
+        f"{UPLOAD_PREFIX}/{upload.id}/{PRESIGN_MARKER}", json.dumps(meta).encode(), "application/json"
+    )
+    return upload
+
+
+async def presigned(upload_id: str, *, owner_id: str) -> PresignedUpload:
+    """The caller's pending direct upload, or UploadNotFound."""
+    await check_owner([upload_id], owner_id)
+    blobs = get_blobs()
+    key = f"{UPLOAD_PREFIX}/{upload_id}/{PRESIGN_MARKER}"
+    if not await blobs.exists(key):
+        raise UploadNotFound(f"upload {upload_id!r} not found")
+    meta = json.loads(await blobs.get(key))
+    return PresignedUpload(
+        id=upload_id,
+        name=meta["name"],
+        bytes=int(meta["bytes"]),
+        content_type=meta["content_type"],
+        key=f"{UPLOAD_PREFIX}/{upload_id}/{meta['name']}",
+    )
 
 
 def _document(upload_id: str, name: str, data: bytes) -> Document:
