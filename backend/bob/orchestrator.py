@@ -530,19 +530,28 @@ class Orchestrator:
             await run.status(JobStatus.building, f"re-checking {len(recheck)} rows")
             verify = stage("verify")
             old = {r.id: r for r in recheck}
-            rows: list[Row] = await verify([self._as_candidate(job, r) for r in recheck], ctx)
+            rows: list[Row] = await verify([self._as_candidate(job, r, ctx) for r in recheck], ctx)
             for row in rows:
                 prev = old[row.id]
                 row.created_at, row.spot_check = prev.created_at, prev.spot_check
                 row.cost_usd = prev.cost_usd + row.cost_usd
+                cell = cells.get(row.cell_id)
+                if row.routed_to_judge or row.audited:
+                    job.counts["judged"] = job.counts.get("judged", 0) + 1
+                    if cell is not None:
+                        cell.judged += 1
                 if row.verdict == "rejected":
                     row.reject_reason = f"stale: source changed ({row.reject_reason or 'a check failed'})"
                     dropped.add(row.id)
-                    cell = cells.get(row.cell_id)
                     if cell is not None:
                         cell.kept -= 1
                         cell.rejected += 1
                         lost.add(cell.id)
+                        for axis in (a.name for a in job.plan.axes if a.role == "mix"):
+                            value = prev.coords.get(axis)
+                            counts = cell.mix_kept.get(axis, {})
+                            if value in counts and counts[value] > 0:
+                                counts[value] -= 1
             await self.store.put_rows(job.id, rows)
             job.counts["kept"] = job.counts.get("kept", 0) - len(dropped)
             job.counts["rejected"] = job.counts.get("rejected", 0) + len(dropped)
@@ -581,8 +590,9 @@ class Orchestrator:
 
         if lost and not run.budget_hit:
             run.check_cancel()
-            gaps = await asyncio.to_thread(stage("plan_gap_round"), job, job.plan.cells)
-            work = [(cells[c.id], n) for c, n in gaps if n > 0 and c.id in lost]
+            # only the cells that lost rows: plan_gap_round reweights every cell it is given
+            gaps = await asyncio.to_thread(stage("plan_gap_round"), job, [cells[i] for i in sorted(lost)])
+            work = [(cells[c.id], n) for c, n in gaps if n > 0 and c.id in cells]
             if work:
                 job.round += 1
                 await run.status(JobStatus.filling_gaps, f"round {job.round}")
@@ -605,7 +615,20 @@ class Orchestrator:
         await self._report_and_export(run, pairs)
 
     @staticmethod
-    def _as_candidate(job: Job, row: Row) -> Candidate:
+    def _as_candidate(job: Job, row: Row, ctx: GenContext) -> Candidate:
+        """The row as a Candidate for the re-check. Chunk and evidence ids hash document offsets, so an edit
+        above a passage changes them: map the row onto the new chunks and evidence that still hold its
+        cited text (same document). Text that is gone maps to nothing, and the checks then fail."""
+        chunks = ctx.chunks.values() if isinstance(ctx.chunks, dict) else ctx.chunks
+        cited = [(span.doc_id, span.text) for span in row.spans if span.text]
+        chunk_ids = [cid for cid in row.chunk_ids if cid in {c.id for c in chunks}]
+        for c in chunks:
+            if c.id not in chunk_ids and any(d == c.doc_id and t in c.text for d, t in cited):
+                chunk_ids.append(c.id)
+        premise = row.premise_evidence_id
+        items = getattr(ctx.evidence, "items", None) or []
+        if premise and premise not in {e.id for e in items}:
+            premise = next((e.id for e in items if (e.doc_id, e.span_text) in set(cited)), None)
         return Candidate(
             id=row.id,
             job_id=row.job_id,
@@ -614,8 +637,8 @@ class Orchestrator:
             case_type=row.case_type,
             coords=row.coords,
             messages=row.messages,
-            chunk_ids=row.chunk_ids,
-            premise_evidence_id=row.premise_evidence_id,
+            chunk_ids=chunk_ids,
+            premise_evidence_id=premise,
             absent_topic=row.absent_topic,
             writer_model=job.models.writer.model_id,
             cost_usd=0.0,
@@ -1040,14 +1063,20 @@ class Orchestrator:
         return files
 
     async def resync(self, job_id: str) -> Job:
-        """CONTRACTS section 10: runner.start(id, "resync") on a finished job (status done, no worker).
-        Anything else -> JobRunning (409). Capacity as in create_job (RunnerBusy -> 429, job unchanged).
-        Appends job.status ingesting + the "starting worker" progress event, like create_job."""
+        """CONTRACTS section 10: runner.start(id, "resync") on a finished job: status done, or error /
+        cancelled after a first run that produced a report (so a failed or cancelled resync can be retried);
+        no worker running. Anything else -> JobRunning (409). Capacity as in create_job (RunnerBusy -> 429,
+        job unchanged). Resets the control flag to "approved" (a leftover "cancel" would stop the worker),
+        then appends job.status ingesting + the "starting worker" progress event, like create_job."""
         job = await self.get_job(job_id)
-        if job.status is not JobStatus.done or await self.runner.is_running(job_id):
+        finished = job.status is JobStatus.done or (
+            job.status in (JobStatus.error, JobStatus.cancelled) and job.report is not None
+        )
+        if not finished or await self.runner.is_running(job_id):
             raise JobRunning(f"only a finished job can be re-synced (status {job.status.value})")
         if job.plan is None:
             raise JobRunning("this job has no plan to re-sync")
+        before = job.model_copy(deep=True)
         reserve = getattr(self.runner, "reserve", None)
         if reserve is not None:
             await reserve(job.id, job.owner_id)
@@ -1060,8 +1089,11 @@ class Orchestrator:
         job.error = None
         job.heartbeat_at = _now()  # the watchdog measures from here, not from the first run
         job.updated_at = _now()
+        saved = False
         try:
+            await self.store.set_control(job.id, "approved", job.plan)
             await self.store.put_job(job)
+            saved = True
             await self.events.append(
                 job.id, "job.status", {"status": job.status.value, "detail": job.stage_detail}
             )
@@ -1074,6 +1106,13 @@ class Orchestrator:
         except BaseException:
             if reserve is not None:
                 await self.runner.release(job.id)
+            if saved and not await self.runner.is_running(job.id):
+                # no worker took it: put the job back as it was, so it can be re-synced later
+                before.updated_at = _now()
+                await self.store.put_job(before)
+                await self.events.append(
+                    job.id, "job.status", {"status": before.status.value, "detail": before.stage_detail}
+                )
             raise
         return job
 

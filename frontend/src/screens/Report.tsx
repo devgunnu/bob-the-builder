@@ -230,7 +230,7 @@ export default function ReportScreen() {
               </div>
               <QuickDownload jobId={id!} files={s.files} preset={preset} />
             </motion.div>
-            {s.status === "done" && <Resync jobId={id!} />}
+            {(s.status === "done" || s.status === "error" || s.status === "cancelled") && <Resync jobId={id!} />}
 
             <div className="mb-4 flex gap-1 rounded-2xl bg-panel p-1.5" role="tablist">
               {TABS.map(([t, label]) => (

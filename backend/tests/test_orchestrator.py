@@ -289,9 +289,28 @@ async def test_resync_with_no_source_changes_is_done_at_once():
     assert "resync: 0 added, 0 changed, 0 removed" in logs
 
 
+def _report():
+    from bob.core.models import Report
+
+    return Report(
+        coverage=[],
+        mix_coverage={},
+        pass_rate_by_check={},
+        reject_reasons={},
+        duplicates_removed=0,
+        judge_rate=0.0,
+        judge_agreement=None,
+        spot_check={},
+        sample_row_ids=[],
+        token_stats={},
+        rounds=[],
+    )
+
+
 async def test_resync_guards():
     o = Orchestrator(runner=LocalRunner(max_workers=2, max_active_per_user=1))
     job = await _finished_upload_job(o)
+    # error / cancelled before any report: the first run never finished, nothing to re-sync
     for status in (JobStatus.error, JobStatus.cancelled, JobStatus.building):
         await o.store.put_job(job.model_copy(update={"status": status, "heartbeat_at": datetime.now(UTC)}))
         with pytest.raises(JobRunning, match="only a finished job"):
@@ -299,3 +318,34 @@ async def test_resync_guards():
     await o.store.put_job(job.model_copy(update={"plan": None}))
     with pytest.raises(JobRunning, match="no plan"):
         await o.resync(job.id)
+
+
+async def test_resync_retries_after_a_failed_resync_and_ignores_a_leftover_cancel():
+    o = Orchestrator(runner=LocalRunner(max_workers=2, max_active_per_user=1))
+    job = await _finished_upload_job(o)
+    # a failed resync left the job in error (the first run's report is still there),
+    # and a Cancel pressed as the first run ended left the control flag on "cancel"
+    failed = job.model_copy(
+        update={"status": JobStatus.error, "error": "Firecrawl: down", "report": _report()}
+    )
+    await o.store.put_job(failed)
+    await o.store.set_control(job.id, "cancel")
+    await o.resync(job.id)
+    done = await _wait_terminal(o, job.id)
+    assert done.status is JobStatus.done and done.stage_detail == "no changes in the sources"
+    assert done.error is None
+
+
+async def test_resync_puts_the_job_back_when_no_worker_starts():
+    class NoStart(LocalRunner):
+        async def start(self, job_id, mode):
+            raise RuntimeError("no worker")
+
+    o = Orchestrator(runner=NoStart(max_workers=2, max_active_per_user=1))
+    job = await _finished_upload_job(o)
+    with pytest.raises(RuntimeError, match="no worker"):
+        await o.resync(job.id)
+    back = await o.store.get_job(job.id)
+    assert back.status is JobStatus.done and back.stage_detail == job.stage_detail
+    statuses = [e.data["status"] for e in await o.events.read_after(job.id, 0) if e.type == "job.status"]
+    assert statuses == ["ingesting", "done"]
