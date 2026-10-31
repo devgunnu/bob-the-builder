@@ -24,12 +24,14 @@ dependencies = [
     "tenacity",
     "boto3",
     "pyjwt[crypto]",
+    "python-multipart>=0.0.32",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest",
     "pytest-asyncio",
+    "reportlab>=5.1.0",
     "ruff",
 ]
 

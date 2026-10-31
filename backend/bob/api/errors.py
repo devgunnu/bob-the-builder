@@ -46,6 +46,12 @@ async def runner_busy_handler(_: Request, exc: Exception) -> JSONResponse:
     return JSONResponse({"error": "too many running jobs", "detail": str(exc) or None}, status_code=429)
 
 
+async def unexpected_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    """Last resort: keep the {error, detail} shape for crashes too (the frontend reads it)."""
+    detail = f"{type(exc).__name__}: {exc}"[:500]
+    return JSONResponse({"error": "internal error", "detail": detail}, status_code=500)
+
+
 def not_found(what: str = "not found") -> ApiError:
     return ApiError(404, what)
 
