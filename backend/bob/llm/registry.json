@@ -56,6 +56,16 @@
       "max_tokens": 8192
     },
     {
+      "prefix": "amazon.nova-2-lite",
+      "json_mode": "tool",
+      "cache": true,
+      "min_cache_tokens": 1024,
+      "allows_temperature": true,
+      "max_tokens": 8192,
+      "price_in_per_m": 0.30,
+      "price_out_per_m": 2.50
+    },
+    {
       "prefix": "amazon.nova",
       "json_mode": "tool",
       "cache": true,

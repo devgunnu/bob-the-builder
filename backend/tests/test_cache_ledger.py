@@ -38,18 +38,18 @@ async def test_cache_roundtrip_and_off(monkeypatch):
 def test_ledger_prices_and_frontier():
     job = _job("led-1")
     ledger.register_job(job)
-    ledger.record(job.id, "writer", in_tokens=1_000_000, out_tokens=1_000_000)  # haiku 0.10 + 0.50
+    ledger.record(job.id, "writer", in_tokens=1_000_000, out_tokens=1_000_000)  # nova 2 lite 0.30 + 2.50
     ledger.record(job.id, "jev", in_tokens=1_000_000)  # 0.042
     ledger.record(job.id, "firecrawl", usd=0.01)
     ledger.record(job.id, "composio")  # no price -> unknown, never guessed
     s = ledger.summary(job.id)
-    assert abs(s.by_model["writer"].usd - 0.60) < 1e-9
+    assert abs(s.by_model["writer"].usd - 2.80) < 1e-9
     assert abs(s.by_model["jev"].usd - 0.042) < 1e-9
-    assert abs(s.total_usd - 0.652) < 1e-6
+    assert abs(s.total_usd - 2.852) < 1e-6
     assert s.price_unknown == ["composio"]
     assert s.model_ids["writer"] == job.models.writer.model_id
-    # frontier: writer + jev tokens at the judge (sonnet 2/10) price = 2*2 + 10*1
-    assert abs(s.frontier_only_estimate_usd - 14.0) < 1e-6
+    # frontier: writer + jev tokens at the judge (nova 2 lite 0.30/2.50) price = 2*0.3 + 1*2.5
+    assert abs(s.frontier_only_estimate_usd - 3.1) < 1e-6
     assert ledger.frontier_only_estimate(job.id) == ledger.frontier_only_estimate_usd(job.id)
 
 
