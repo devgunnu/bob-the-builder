@@ -151,13 +151,19 @@ async def crawl(
     client: Firecrawl | None = None,
     poll_s: float = CRAWL_POLL_S,
     timeout_s: float = CRAWL_TIMEOUT_S,
+    prompt: str | None = None,
 ) -> CrawlResult:
-    """Crawl `url` (at most `limit` pages). Calls progress(done, total, url) per new page."""
+    """Crawl `url` (at most `limit` pages). Calls progress(done, total, url) per new page.
+
+    `prompt` (optional) is Firecrawl's natural-language crawl guidance, for example
+    "only support pages: billing, limits, errors", which steers which links it follows.
+    """
     client = client or make_client()
     started = await _call(
         client.start_crawl,
         url,
         limit=limit,
+        prompt=prompt,
         exclude_paths=EXCLUDE_PATHS,
         scrape_options=ScrapeOptions(formats=["markdown"], only_main_content=True, exclude_tags=EXCLUDE_TAGS),
     )
@@ -192,6 +198,32 @@ async def crawl(
         with contextlib.suppress(FirecrawlError):
             await asyncio.to_thread(client.cancel_crawl, started.id)
         raise
+
+
+async def scrape_page(
+    url: str, *, client: Firecrawl | None = None, max_chars: int | None = None
+) -> tuple[CrawledPage | None, str | None]:
+    """Scrape one page with the same cleanup as crawl(). Returns (page, None) or (None, skip reason)."""
+    client = client or make_client()
+    doc = await _call(
+        client.scrape, url, formats=["markdown"], only_main_content=True, exclude_tags=EXCLUDE_TAGS
+    )
+    page, _, reason = _to_page(doc)
+    if page is not None and max_chars is not None and len(page.markdown) > max_chars:
+        return None, f"{len(page.markdown)} chars > {max_chars}"
+    return page, reason
+
+
+async def site_urls(url: str, *, client: Firecrawl | None = None, limit: int = 500) -> list[str]:
+    """Real page URLs of a site from Firecrawl map, canonical (no fragment, no .md copies), deduped."""
+    client = client or make_client()
+    site_map = await _call(client.map, url, limit=limit)
+    seen: dict[str, None] = {}
+    for link in site_map.links:
+        canonical = page_url(link.url)
+        if not canonical.endswith(".md"):
+            seen.setdefault(canonical, None)
+    return list(seen)
 
 
 # ---------- connector entry point ----------

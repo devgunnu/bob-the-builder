@@ -1,0 +1,140 @@
+---
+source_url: https://docs.firecrawl.dev/features/document-parsing
+title: Document Parsing | Firecrawl
+fetched_at: 2026-10-31T02:36:04+00:00
+---
+
+Firecrawl provides powerful document parsing capabilities, allowing you to extract structured content from various document formats. This feature is particularly useful for processing files like spreadsheets, Word documents, and more.
+
+## Supported Document Formats
+
+Firecrawl currently supports the following document formats:
+
+- **Excel Spreadsheets** (`.xlsx`, `.xls`, `.xlsm`, `.xlsb`, `.ods`)  - Each worksheet is converted to a table
+  - Worksheets are separated by H2 headings with the sheet name
+  - Preserves cell formatting and data types
+- **Word Documents** (`.docx`, `.doc`, `.docm`, `.odt`, `.rtf`)  - Extracts text content while preserving document structure
+  - Maintains headings, paragraphs, lists, and tables
+  - Preserves basic formatting and styling
+- **PowerPoint Presentations** (`.pptx`, `.ppt`, `.pptm`, `.odp`)  - Extracts slide content in reading order
+  - Includes speaker notes
+- **EPUB eBooks** (`.epub`)  - Extracts chapter content while preserving document structure
+- **CSV Files** (`.csv`)  - Converted to a table
+- **PDF Documents** (`.pdf`)  - Extracts text content with layout information
+  - Preserves document structure including sections and paragraphs
+  - Handles both text-based and scanned PDFs (with OCR support)
+  - Optional per-page markdown and typed layout blocks with bounding boxes
+  - Priced at 1 credit per-page. See [Pricing](https://firecrawl.dev/pricing) for details.
+  - See [PDF options](https://docs.firecrawl.dev/features/parse#pdf-options) for the full reference: parsing modes, page caps, per-page markdown, and layout blocks.
+
+## How to Use Document Parsing
+
+Document parsing in Firecrawl works in two ways:
+
+1. **URL-based parsing (`/v2/scrape`)**: provide a URL that points to a supported document type.
+2. **File upload parsing (`/v2/parse`)**: upload file bytes directly with `multipart/form-data`.
+
+For URL-based parsing, Firecrawl detects file type from extension or content type automatically.
+
+### Upload documents with `/v2/parse`
+
+Use `/v2/parse` when the source document is local or not publicly accessible by URL.
+
+cURL
+
+Node
+
+Python
+
+```
+curl -X POST "https://api.firecrawl.dev/v2/parse" \
+  -H "Authorization: Bearer fc-YOUR-API-KEY" \
+  -F 'options={"formats":["markdown"]}' \
+  -F "file=@./document.docx;type=application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+```
+
+```
+import { Firecrawl } from "firecrawl";
+
+const app = new Firecrawl({ apiKey: "fc-YOUR-API-KEY" });
+
+const doc = await app.parse(
+  {
+    data: "<html><body><h1>Upload Parse</h1></body></html>",
+    filename: "upload.html",
+    contentType: "text/html",
+  },
+  { formats: ["markdown"] },
+);
+
+console.log(doc.markdown);
+```
+
+```
+from firecrawl import Firecrawl
+from firecrawl.v2.types import ScrapeOptions
+
+app = Firecrawl(api_key="fc-YOUR-API-KEY")
+doc = app.parse(
+    b"<!DOCTYPE html><html><body><h1>Upload Parse</h1></body></html>",
+    filename="upload.html",
+    content_type="text/html",
+    options=ScrapeOptions(formats=["markdown"]),
+)
+print(doc.markdown)
+```
+
+### Example: Scraping an Excel File
+
+Node
+
+```
+import { Firecrawl } from 'firecrawl';
+
+const firecrawl = new Firecrawl({
+  // No API key needed to get started — add one for higher rate limits:
+  // apiKey: "fc-YOUR-API-KEY",
+});
+
+const doc = await firecrawl.scrape('https://example.com/data.xlsx');
+
+console.log(doc.markdown);
+```
+
+### Example: Scraping a Word Document
+
+Node
+
+```
+import { Firecrawl } from 'firecrawl';
+
+const firecrawl = new Firecrawl({
+  // No API key needed to get started — add one for higher rate limits:
+  // apiKey: "fc-YOUR-API-KEY",
+});
+
+const doc = await firecrawl.scrape('https://example.com/data.docx');
+
+console.log(doc.markdown);
+```
+
+## Output Format
+
+All supported document types are converted to clean, structured markdown. For example, an Excel file with multiple sheets might be converted to:
+
+```
+## Sheet1
+
+| Name  | Value |
+|-------|-------|
+| Item 1 | 100   |
+| Item 2 | 200   |
+
+## Sheet2
+
+| Date       | Description  |
+|------------|--------------|
+| 2023-01-01 | First quarter|
+```
+
+> Are you an AI agent that needs a Firecrawl API key? See [firecrawl.dev/agent-onboarding/SKILL.md](https://www.firecrawl.dev/agent-onboarding/SKILL.md) for automated onboarding instructions.

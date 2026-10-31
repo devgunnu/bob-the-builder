@@ -17,7 +17,7 @@ from bob.api.auth import current_user
 from bob.api.deps import get_orchestrator, settings
 from bob.api.errors import ApiError, not_found
 from bob.api.sse import parse_last_event_id, sse_response
-from bob.connectors.upload import UploadError, save_uploads
+from bob.connectors.upload import UploadError, UploadNotFound, check_owner, save_uploads
 from bob.core.models import Job, JobSpec, Plan, Row, UserProfile
 from bob.orchestrator import Orchestrator
 
@@ -78,7 +78,7 @@ async def me(user: User) -> UserProfile:
 
 
 @router.post("/uploads")
-async def upload_files(request: Request, files: list[UploadFile], _: User) -> dict[str, Any]:
+async def upload_files(request: Request, files: list[UploadFile], user: User) -> dict[str, Any]:
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > MAX_UPLOAD_BODY_BYTES:
         raise ApiError(413, "upload too large", detail="the request body limit is 6 MB")
@@ -91,7 +91,7 @@ async def upload_files(request: Request, files: list[UploadFile], _: User) -> di
             raise ApiError(413, "upload too large", detail="the request body limit is 6 MB")
         payload.append((upload.filename or "file", data))
     try:
-        saved = await save_uploads(payload)
+        saved = await save_uploads(payload, owner_id=user.id)
     except UploadError as exc:
         raise ApiError(400, "bad upload", detail=str(exc)) from exc
     return {
@@ -105,7 +105,14 @@ async def upload_files(request: Request, files: list[UploadFile], _: User) -> di
 
 @router.post("/jobs")
 async def create_job(spec: JobSpec, user: User, orchestrator: Orch) -> Job:
-    """412 (AWS / models not verified) and 429 (runner busy) come from the orchestrator."""
+    """404 for another user's upload ids; 412 and 429 come from the orchestrator."""
+    upload_ids = [uid for src in spec.sources if src.kind == "upload" for uid in src.upload_ids]
+    if spec.seed_upload_id:
+        upload_ids.append(spec.seed_upload_id)
+    try:
+        await check_owner(upload_ids, user.id)
+    except UploadNotFound as exc:
+        raise not_found("upload not found") from exc
     return await orchestrator.create_job(spec, user)
 
 

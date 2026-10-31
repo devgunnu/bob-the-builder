@@ -1,6 +1,8 @@
 """Uploads: store files through Blobs, read them back, turn them into Documents (G1).
 
 Keys: "runs/uploads/<upload_id>/<name>" (CONTRACTS §6). One upload id per file.
+Each upload also gets "runs/uploads/<upload_id>/.owner" holding the uploader's Bob
+user id, so one user can never use another user's upload in a job (CONTRACTS §14).
 Nothing is written to local disk here; Blobs decides where bytes live
 (local: under settings.runs_dir, aws: S3).
 """
@@ -26,6 +28,7 @@ SEED_EXTENSIONS = (".jsonl", ".json")
 ALLOWED_EXTENSIONS = SUPPORTED_EXTENSIONS + SEED_EXTENSIONS
 UPLOAD_ID = re.compile(r"[0-9a-f]{32}")
 MAX_NAME_CHARS = 150
+OWNER_MARKER = ".owner"  # safe_name() strips leading dots, so no user file can take this name
 
 Progress = Callable[[int, int, str], Awaitable[None]]
 
@@ -58,8 +61,8 @@ def _check_upload_id(upload_id: str) -> None:
         raise UploadNotFound(f"upload {upload_id!r} not found")
 
 
-async def save_uploads(files: list[tuple[str, bytes]]) -> list[UploadedFile]:
-    """Validate every file first, then store each under its own upload id."""
+async def save_uploads(files: list[tuple[str, bytes]], *, owner_id: str) -> list[UploadedFile]:
+    """Validate every file first, then store each under its own upload id, owned by owner_id."""
     if not files:
         raise UploadError("no files in the request")
     checked: list[tuple[str, bytes]] = []
@@ -77,17 +80,39 @@ async def save_uploads(files: list[tuple[str, bytes]]) -> list[UploadedFile]:
     saved: list[UploadedFile] = []
     for name, data in checked:
         upload_id = uuid.uuid4().hex
+        await blobs.put(f"{UPLOAD_PREFIX}/{upload_id}/{OWNER_MARKER}", owner_id.encode(), "text/plain")
         await blobs.put(f"{UPLOAD_PREFIX}/{upload_id}/{name}", data)
         saved.append(UploadedFile(id=upload_id, name=name, bytes=len(data)))
     return saved
 
 
-async def read_upload(upload_id: str) -> list[tuple[str, bytes]]:
-    """Return [(name, data)] for one upload id (CONTRACTS §7). Used for seeds and sources."""
+async def upload_owner(upload_id: str) -> str | None:
     _check_upload_id(upload_id)
     blobs = get_blobs()
+    key = f"{UPLOAD_PREFIX}/{upload_id}/{OWNER_MARKER}"
+    if not await blobs.exists(key):
+        return None
+    return (await blobs.get(key)).decode()
+
+
+async def check_owner(upload_ids: list[str], owner_id: str) -> None:
+    """Raise UploadNotFound unless every upload belongs to owner_id (no hint that it exists)."""
+    for upload_id in upload_ids:
+        if await upload_owner(upload_id) != owner_id:
+            raise UploadNotFound(f"upload {upload_id!r} not found")
+
+
+async def read_upload(upload_id: str, *, owner_id: str | None = None) -> list[tuple[str, bytes]]:
+    """Return [(name, data)] for one upload id (CONTRACTS §7). Used for seeds and sources.
+
+    With owner_id, the upload must belong to that user.
+    """
+    _check_upload_id(upload_id)
+    if owner_id is not None:
+        await check_owner([upload_id], owner_id)
+    blobs = get_blobs()
     prefix = f"{UPLOAD_PREFIX}/{upload_id}/"
-    keys = sorted(await blobs.list(prefix))
+    keys = sorted(k for k in await blobs.list(prefix) if k != prefix + OWNER_MARKER)
     if not keys:
         raise UploadNotFound(f"upload {upload_id!r} not found")
     return [(key[len(prefix) :], await blobs.get(key)) for key in keys]
@@ -113,15 +138,17 @@ def _document(upload_id: str, name: str, data: bytes) -> Document:
     )
 
 
-async def fetch(spec: SourceSpec, job_id: str, progress: Progress) -> list[Document]:
-    """kind="upload": parse every uploaded file into a Document."""
+async def fetch(
+    spec: SourceSpec, job_id: str, progress: Progress, *, owner_id: str | None = None
+) -> list[Document]:
+    """kind="upload": parse every uploaded file into a Document (owner-checked when owner_id is set)."""
     if not spec.upload_ids:
         raise UploadError("upload source has no upload_ids")
     total = len(spec.upload_ids)
     documents: list[Document] = []
     await progress(0, total, "reading uploads")
     for index, upload_id in enumerate(spec.upload_ids, start=1):
-        for name, data in await read_upload(upload_id):
+        for name, data in await read_upload(upload_id, owner_id=owner_id):
             if PurePath(name).suffix.lower() in SEED_EXTENSIONS:
                 raise UploadError(f"{name}: seed files (.jsonl/.json) are not document sources")
             try:

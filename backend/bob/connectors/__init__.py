@@ -20,7 +20,7 @@ async def fetch_documents(
     if spec.kind == "upload":
         from bob.connectors import upload
 
-        return await upload.fetch(spec, job_id, progress)
+        return await upload.fetch(spec, job_id, progress, owner_id=user_id)
     if spec.kind == "url":
         from bob.connectors import firecrawl
 
