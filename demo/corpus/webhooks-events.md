@@ -1,0 +1,443 @@
+---
+source_url: https://docs.firecrawl.dev/webhooks/events
+title: Webhook Event Types | Firecrawl
+fetched_at: 2026-10-31T02:32:42+00:00
+---
+
+Firecrawl sends webhook events at each stage of a job’s lifecycle, so you can track progress, capture results, and handle failures in real time without polling.
+
+## Quick Reference
+
+| Event | Trigger |
+| --- | --- |
+| `crawl.started` | Crawl job begins processing |
+| `crawl.page` | A page is scraped during a crawl |
+| `crawl.completed` | Crawl job finishes and all pages have been processed |
+| `batch_scrape.started` | Batch scrape job begins processing |
+| `batch_scrape.page` | A URL is scraped during a batch scrape |
+| `batch_scrape.completed` | All URLs in the batch have been processed |
+| `extract.started` | Extract job begins processing |
+| `extract.completed` | Extraction finishes successfully |
+| `extract.failed` | Extraction fails |
+| `agent.started` | Agent job begins processing |
+| `agent.action` | Agent executes a tool (scrape, search, etc.) |
+| `agent.completed` | Agent finishes successfully |
+| `agent.failed` | Agent encounters an error |
+| `agent.cancelled` | Agent job is cancelled by the user |
+| `monitor.page` | A monitored page scrape finishes |
+| `monitor.check.completed` | Monitor check finishes and page-level changes are available |
+
+## Payload Structure
+
+All webhook events share this structure:
+
+```
+{
+  "success": true,
+  "type": "crawl.page",
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "webhookId": "f1e2d3c4-0000-0000-0000-000000000001",
+  "data": [...],
+  "metadata": {}
+}
+```
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `success` | boolean | Whether the operation succeeded |
+| `type` | string | Event type (e.g. `crawl.page`) |
+| `id` | string | Job ID |
+| `webhookId` | string | Unique ID for this webhook delivery. Sent with crawl, batch scrape, extract, and monitor events |
+| `data` | array or object | Event-specific data (see examples below) |
+| `metadata` | object | Custom metadata from your webhook config |
+| `error` | string | Error message (when `success` is `false`) |
+
+## Crawl Events
+
+### `crawl.started`
+
+Sent when the crawl job begins processing.
+
+```
+{
+  "success": true,
+  "type": "crawl.started",
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "webhookId": "f1e2d3c4-0000-0000-0000-000000000002",
+  "data": [],
+  "metadata": {}
+}
+```
+
+### `crawl.page`
+
+Sent for each page scraped. The `data` array contains the page content and metadata.
+
+```
+{
+  "success": true,
+  "type": "crawl.page",
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "webhookId": "f1e2d3c4-0000-0000-0000-000000000003",
+  "data": [\
+    {\
+      "markdown": "# Page content...",\
+      "metadata": {\
+        "title": "Page Title",\
+        "description": "Page description",\
+        "url": "https://example.com/page",\
+        "statusCode": 200,\
+        "contentType": "text/html",\
+        "scrapeId": "550e8400-e29b-41d4-a716-446655440001",\
+        "sourceURL": "https://example.com/page",\
+        "proxyUsed": "basic",\
+        "cacheState": "hit",\
+        "cachedAt": "2025-09-03T21:11:25.636Z",\
+        "creditsUsed": 1\
+      }\
+    }\
+  ],
+  "metadata": {}
+}
+```
+
+### `crawl.completed`
+
+Sent when the crawl job finishes and all pages have been processed.
+
+```
+{
+  "success": true,
+  "type": "crawl.completed",
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "webhookId": "f1e2d3c4-0000-0000-0000-000000000004",
+  "data": [],
+  "metadata": {}
+}
+```
+
+## Batch Scrape Events
+
+### `batch_scrape.started`
+
+Sent when the batch scrape job begins processing.
+
+```
+{
+  "success": true,
+  "type": "batch_scrape.started",
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "webhookId": "f1e2d3c4-0000-0000-0000-000000000005",
+  "data": [],
+  "metadata": {}
+}
+```
+
+### `batch_scrape.page`
+
+Sent for each URL scraped. The `data` array contains the page content and metadata.
+
+```
+{
+  "success": true,
+  "type": "batch_scrape.page",
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "webhookId": "f1e2d3c4-0000-0000-0000-000000000006",
+  "data": [\
+    {\
+      "markdown": "# Page content...",\
+      "metadata": {\
+        "title": "Page Title",\
+        "description": "Page description",\
+        "url": "https://example.com",\
+        "statusCode": 200,\
+        "contentType": "text/html",\
+        "scrapeId": "550e8400-e29b-41d4-a716-446655440001",\
+        "sourceURL": "https://example.com",\
+        "proxyUsed": "basic",\
+        "cacheState": "miss",\
+        "cachedAt": "2025-09-03T23:30:53.434Z",\
+        "creditsUsed": 1\
+      }\
+    }\
+  ],
+  "metadata": {}
+}
+```
+
+### `batch_scrape.completed`
+
+Sent when all URLs in the batch have been processed.
+
+```
+{
+  "success": true,
+  "type": "batch_scrape.completed",
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "webhookId": "f1e2d3c4-0000-0000-0000-000000000007",
+  "data": [],
+  "metadata": {}
+}
+```
+
+## Monitor Events
+
+### `monitor.page`
+
+Sent as each monitored page scrape finishes. This event is emitted from the scrape worker path, so it arrives before the full monitor check is reconciled.
+
+monitor.page
+
+```
+{
+  "success": true,
+  "type": "monitor.page",
+  "id": "019df960-5f2a-75fb-a98b-bd2d32ca67d4",
+  "webhookId": "f1e2d3c4-0000-0000-0000-000000000000",
+  "data": [\
+    {\
+      "monitorId": "019df960-06e7-7383-9d89-82c0113dc31a",\
+      "checkId": "019df960-5f2a-75fb-a98b-bd2d32ca67d4",\
+      "url": "https://example.com/blog",\
+      "status": "changed",\
+      "previousScrapeId": "019df94f-82c3-7e41-81f0-00c72b2d9c52",\
+      "currentScrapeId": "019df960-73ee-7ac2-97a9-fb0e442c21f1",\
+      "error": null,\
+      "isMeaningful": true,\
+      "judgment": {\
+        "meaningful": true,\
+        "confidence": "high",\
+        "reason": "The page headline changed to announce a new release cadence.",\
+        "meaningfulChanges": [\
+          {\
+            "type": "changed",\
+            "before": "Welcome to our weekly update.",\
+            "after": "Welcome to our weekly update — now with daily releases!",\
+            "reason": "The headline changed in a way that matches the monitor goal."\
+          }\
+        ]\
+      },\
+      "diff": {\
+        "text": "--- previous\n+++ current\n@@ -1,3 +1,3 @@\n # Latest posts\n-Welcome to our weekly update.\n+Welcome to our weekly update — now with daily releases!\n"\
+      }\
+    }\
+  ],
+  "metadata": {
+    "environment": "production"
+  }
+}
+```
+
+### `monitor.check.completed`
+
+Sent when a monitor check finishes. The `data` object contains check status and summary counts. Page-level results are only sent through `monitor.page` events or returned from the monitor check API.
+
+monitor.check.completed
+
+```
+{
+  "success": true,
+  "type": "monitor.check.completed",
+  "id": "019df960-5f2a-75fb-a98b-bd2d32ca67d4",
+  "webhookId": "f1e2d3c4-0001-0000-0000-000000000000",
+  "data": [\
+    {\
+      "monitorId": "019df960-06e7-7383-9d89-82c0113dc31a",\
+      "checkId": "019df960-5f2a-75fb-a98b-bd2d32ca67d4",\
+      "status": "completed",\
+      "summary": {\
+        "totalPages": 2,\
+        "same": 1,\
+        "changed": 1,\
+        "new": 0,\
+        "removed": 0,\
+        "error": 0\
+      }\
+    }\
+  ],
+  "metadata": {
+    "environment": "production"
+  }
+}
+```
+
+`success` is `true` when the check completed without page errors. For partial or failed checks, `success` is `false` and `error` may contain a message.
+
+## Extract Events
+
+### `extract.started`
+
+Sent when the extract job begins processing.
+
+```
+{
+  "success": true,
+  "type": "extract.started",
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "webhookId": "f1e2d3c4-0000-0000-0000-000000000008",
+  "data": [],
+  "metadata": {}
+}
+```
+
+### `extract.completed`
+
+Sent when extraction finishes successfully. The `data` array contains the extracted data and usage info.
+
+```
+{
+  "success": true,
+  "type": "extract.completed",
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "webhookId": "f1e2d3c4-0000-0000-0000-000000000009",
+  "data": [\
+    {\
+      "success": true,\
+      "data": { "siteName": "Example Site", "category": "Technology" },\
+      "extractId": "550e8400-e29b-41d4-a716-446655440000",\
+      "llmUsage": 0.0020118,\
+      "totalUrlsScraped": 1,\
+      "sources": {\
+        "siteName": ["https://example.com"],\
+        "category": ["https://example.com"]\
+      }\
+    }\
+  ],
+  "metadata": {}
+}
+```
+
+### `extract.failed`
+
+Sent when extraction fails. The `error` field contains the failure reason.
+
+```
+{
+  "success": false,
+  "type": "extract.failed",
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "webhookId": "f1e2d3c4-0000-0000-0000-000000000010",
+  "data": [],
+  "error": "Failed to extract data: timeout exceeded",
+  "metadata": {}
+}
+```
+
+## Agent Events
+
+Sent for jobs started with a `webhook` on [`/v2/agent`](https://docs.firecrawl.dev/features/agent).
+
+### `agent.started`
+
+Sent when the agent job begins processing.
+
+```
+{
+  "success": true,
+  "type": "agent.started",
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "data": [],
+  "metadata": {}
+}
+```
+
+### `agent.action`
+
+Sent after each tool execution (scrape, search, etc.).
+
+```
+{
+  "success": true,
+  "type": "agent.action",
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "data": [\
+    {\
+      "creditsUsed": 5,\
+      "action": "mcp__tools__scrape",\
+      "input": {\
+        "url": "https://example.com"\
+      }\
+    }\
+  ],
+  "metadata": {}
+}
+```
+
+The `creditsUsed` value in `action` events is an **estimate** of the total
+credits used so far. The final accurate credit count is only
+available in the `completed`, `failed`, or `cancelled` events.
+
+### `agent.completed`
+
+Sent when the agent finishes successfully. The `data` array contains the extracted data and total credits used.
+
+```
+{
+  "success": true,
+  "type": "agent.completed",
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "data": [\
+    {\
+      "creditsUsed": 15,\
+      "data": {\
+        "company": "Example Corp",\
+        "industry": "Technology",\
+        "founded": 2020\
+      }\
+    }\
+  ],
+  "metadata": {}
+}
+```
+
+### `agent.failed`
+
+Sent when the agent encounters an error. The `error` field contains the failure reason.
+
+```
+{
+  "success": false,
+  "type": "agent.failed",
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "data": [\
+    {\
+      "creditsUsed": 8\
+    }\
+  ],
+  "error": "Max credits exceeded",
+  "metadata": {}
+}
+```
+
+When the run stopped at its `maxCredits` limit, the `data` entry also has `stopReason: "credit_limit_reached"`. It may include a best-effort `partial`, `partialSchemaValid` (only when the request had a `schema`) and a `message` on what is incomplete. A `partial` isn’t sent on every credit stop. See [Handling credit-limit stops](https://docs.firecrawl.dev/features/agent#handling-credit-limit-stops).
+
+### `agent.cancelled`
+
+Sent when the agent job is cancelled by the user.
+
+```
+{
+  "success": false,
+  "type": "agent.cancelled",
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "data": [\
+    {\
+      "creditsUsed": 3\
+    }\
+  ],
+  "metadata": {}
+}
+```
+
+## Event Filtering
+
+By default, you receive all events. To subscribe to specific events only, use the `events` array in your webhook config:
+
+```
+{
+  "url": "https://your-app.com/webhook",
+  "events": ["completed", "failed"]
+}
+```
+
+This is useful if you only care about job completion and don’t need per-page updates.

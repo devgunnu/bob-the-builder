@@ -2,30 +2,31 @@
 
 Running log of Gunbir's backend work. Newest entries at the top of the log.
 Frontend (G3, G4) is built in a separate session on branch `claude/bob-web`.
+**Working branch from 2026-10-31: `gunbir/integration`** = `main` + all of Aaditya's branches (`a1-core`, `a2-read`, `a3-plan-write`, `a4-verify-ship`) + `gunbir/g1-api` + `gunbir/g2-connectors` + `claude/bob-web`.
 Source of truth stays `PLAN.md` and `CONTRACTS.md` (v4.1); this file records what is built, what is decided, and what is waiting on whom.
 
 ## Status
 
 | Part | Owner | Branch | State |
 |---|---|---|---|
-| 1. Smoke corpus (`demo/smoke/`) | G2 | `gunbir/g2-connectors` | Done, pushed (`28d5d92`), v4.1 merged in (`3fd32bc`) |
-| 2. API slice 1 (parsers, uploads, auth, SSE, thin-path routes) | G1 | `gunbir/g1-api` | Written; parsers + SSE tested; routes wait on A1 core |
-| 3. Firecrawl + Composio (Notion) connectors | G2 | `gunbir/g2-connectors` | Built and tested with real calls; demo Notion pages still to write |
-| 4. API slice 2 (health, `/me/aws*`, `/me/models*`, connectors, preview, spot-check, export, files, presets) | G1 | | After A1 core lands |
-| 3b. Demo Notion pages + full demo crawl to `demo/corpus/` | G2 | | Next |
-| 5. Jira / Confluence, `sync.py` (P1) | G2 | | Later |
-| 6. Integration with the frontend | G1 + G3/G4 | | After 2 to 4 |
+| 1. Smoke corpus (`demo/smoke/`) | G2 | `gunbir/g2-connectors` | Done |
+| 2. API slice 1 (parsers, uploads, auth, SSE, thin-path routes) | G1 | `gunbir/integration` | Done; runs on A1's real core; 44 G1/G2 tests pass |
+| 3. Firecrawl + Composio (Notion) connectors | G2 | `gunbir/integration` | Done; real crawl, real Notion browse + fetch |
+| 3b. Demo docs corpus (`demo/corpus/`, 25 pages) | G2 | `gunbir/integration` | Done |
+| 3c. Demo Notion wiki (6 fictional pages) | G2 | `gunbir/integration` | Drafted + seed script; waiting on one parent page in Notion |
+| 4. API slice 2 (health, `/me/aws*`, `/me/models*`, `/connectors*`, preview, spot-check, export, files, presets) | G1 | | Next |
+| 5. Jira / Confluence, `sync.py` (P1; orchestrator resync needs `sync.py`) | G2 | | Later |
+| 6. Integration with the frontend | G1 + G3/G4 | | After 4 |
 
 ## Waiting on
 
 | From | What | Logged in |
 |---|---|---|
-| A1 (Aaditya) | `core/models.py`, `config.py`, `core/backends.py` (`get_blobs`), `core/runner.py` (`RunnerBusy`), `orchestrator.py`. None exist on any branch yet. G1 routes, uploads and auth import them. | |
-| A1 | Confirm `settings` attribute names G1 reads | `CHANGES_REQUESTED.md` |
-| A1 | Confirm `Orchestrator()` has no constructor args; missing job/row raises `LookupError` | `CHANGES_REQUESTED.md` |
-| A1 | Define `Event` (`seq`, `type`, `data`); the contract uses it but never defines it | `CHANGES_REQUESTED.md` |
-| A1 | Add `python-multipart`, `beautifulsoup4` (+ dev: `pytest`, `pytest-asyncio`, `reportlab`) to `pyproject.toml` | `CHANGES_REQUESTED.md` |
-| Frontend session | Merge `main` (v4.1). Its `client.ts` sends no auth header, uses plain `EventSource` (cannot send one), downloads files by direct link instead of the `/url` route, and `encodeURIComponent` breaks `{name:path}` keys. No Account screen yet. | |
+| Gunbir | Create Notion page "Bob Demo – Support Wiki (fictional)" and share it with the Composio connection; then `demo/seed_notion.py` creates the 6 pages and `demo/build_corpus.py --notion-only` caches them | |
+| A1 (Aaditya) | Add `python-multipart` to `pyproject.toml` (uploads fail without it); dev: `reportlab` | `CHANGES_REQUESTED.md` |
+| A1 | Two stale tests in `test_orchestrator.py` (`test_create_job_429_and_missing_stage_error`, `test_stage_lookup_names_owner`) assume G1/A3 stages are missing | `CHANGES_REQUESTED.md` |
+| A1 | Optional: `_seeds` passes `owner_id=job.owner_id` to `read_upload` | `CHANGES_REQUESTED.md` |
+| A1 / team | Keys for a full local run: AWS credentials (Bedrock), `JEV_API_KEY`, `SCALEDOWN_API_KEY` (new names; contract §9 still says `OPENROUTER_API_KEY`) | |
 
 ## Decisions made (G1 / G2 scope)
 
@@ -34,7 +35,13 @@ Source of truth stays `PLAN.md` and `CONTRACTS.md` (v4.1); this file records wha
 | Smoke corpus = 5 support-style pages: `/billing`, `/rate-limits`, `/webhooks/overview`, `/webhooks/security`, `/features/key-restrictions` | Short pages full of real limits, settings and numbers, which the false-premise and `numbers` checks need. Feature pages (scrape, crawl) were 50k to 300k chars each. |
 | `clean_markdown()` strips docs-site chrome from Firecrawl output | Mintlify pages carry a ~100k-char JSON config blob, a chat-widget greeting, "Suggest edits" footers and heading anchor links after `only_main_content`. `/billing` went from 130k to 24k chars with no content lost. Moves into `connectors/firecrawl.py` in Part 3. |
 | Firecrawl calls retry on rate limits (wait 15 s, 5 tries) | Our key is on the free plan: 10 req/min on scrape/map, 2 req/min on crawl, 1,000 credits/month. |
-| All A1 touch points in one G1 file, `api/deps.py` | A1 code does not exist yet. If A1's names differ, only that file (and the few callers it lists) changes. |
+| All A1 touch points in one G1 file, `api/deps.py` | Written before A1 existed; when A1 landed only `deps.py` (`get_settings()`), `sse.event_parts` (`Event.id`) and the error mapping changed. |
+| Routes no longer pre-check 412; app-wide handlers map A1's `PreconditionFailed` (412), `JobRunning` (409) and `RunnerBusy` (429) | One source of truth: the orchestrator decides. |
+| Uploads are owner-scoped: `.owner` marker per upload; `POST /jobs` returns 404 for another user's `upload_ids` / `seed_upload_id`; the upload connector re-checks the owner in the worker | Acceptance criterion (quality/acceptance.md): a second user must not use the first user's uploads. |
+| Demo corpus = curated list of 27 support paths checked against the real site map, first 25 under 60k chars | A blind crawl from the docs root returned quickstarts, use cases and API-reference stubs; a Firecrawl `prompt` crawl was too narrow (6 pages). The crawl connector keeps an optional `prompt`. |
+| Demo Notion wiki is fictional, written for the demo, under a parent page marked "(fictional)"; facts shared with the public docs match them exactly | Gives the dataset internal-only facts and real "not in docs" gaps, without passing as Firecrawl's real policy. |
+| Composio cannot create root-level Notion pages | Tool limitation ("must have a parent"), so one parent page must be made by hand. |
+| `build_corpus.py` caches only the demo wiki titles from Notion | A first run cached a personal page; it was deleted before any commit. |
 | `sse.py` and `parsers.py` import nothing from A1 at load time | So both are testable now, before A1 lands. |
 | Upload document URI = `upload://<upload_id>/<name>` (contract example shows `upload://<name>`) | Two uploads with the same file name would get the same `Document.id`. |
 | Upload ids must be 32 hex chars | A crafted id cannot escape the `runs/uploads/` prefix. |
@@ -74,6 +81,15 @@ API (works once A1 core lands): `backend/run.sh` serves on `:8000`; the Vite dev
 
 ## Log
 
+### 2026-10-31: integration branch, A1 core adoption, demo corpus (`gunbir/integration`)
+- Merged `aaditya/a1-core` into `gunbir/g2-connectors` (`2fd398e`), then created `gunbir/integration` and merged the latest `a1-core` (AWS adapters, Dockerfile, CDK, quality workbench), `a2-read`, `a3-plan-write`, `a4-verify-ship` and `claude/bob-web`. Only conflicts: the `CHANGES_REQUESTED.md` table (kept every row) and `.gitignore` (union).
+- Adapted G1 to A1's real code: `get_settings()`, `Event.id`, error handlers for `PreconditionFailed` / `JobRunning` / `RunnerBusy`. The orchestrator calls `fetch_documents(..., user_id=job.owner_id)` and `read_upload(upload_id)` exactly as G1 implements them.
+- Upload ownership (see decisions). New `tests/test_api.py`: open routes, upload -> Documents, bad upload 400, bad body 422, orchestrator 412, 404 on every unknown-job route, cross-user upload 404.
+- Full suite on the integration branch: 129 passed; 26 fail only for missing local AWS credentials / Jev and ScaleDown keys (24) or stale A1 assertions (2). All 44 G1/G2 tests pass.
+- `connectors/firecrawl.py`: `scrape_page()`, `site_urls()`, optional crawl `prompt`.
+- `demo/corpus/`: 25 real support pages (~310k chars, no chrome left) + `index.json` (`demo/build_corpus.py`, ~25 credits).
+- `demo/notion_pages/`: 6 fictional wiki pages + README; `demo/seed_notion.py` (opens the create-page tool on the auth config for the run only, restores read-only in `finally`).
+
 ### 2026-10-31: Part 3, connectors (`gunbir/g2-connectors`)
 - `connectors/firecrawl.py`: `crawl()` (start_crawl, poll every 2 s, progress once per new page, rate-limit retry, cancel on timeout) and `fetch()` -> `Document`s + ledger entry. `clean_markdown()` moved here from the smoke script; the script now imports it.
 - Composio: inspected SDK 0.22.0 by introspection, listed all 60 Notion tools with real calls, created the read-only auth config, linked a Notion connection for `bob-local` (`ca_uKQOf8gvuHHF`, ACTIVE).
@@ -103,6 +119,7 @@ API (works once A1 core lands): `backend/run.sh` serves on `:8000`; the Vite dev
 - About 20 Firecrawl credits used. `.env` holds `FIRECRAWL_API_KEY`; it is gitignored and never staged.
 
 ## Next
-1. Demo Notion pages (support FAQ, escalation policy, known issues, ...), shared with the Bob connection; cache them to `demo/corpus/notion/`.
-2. Full demo crawl (cap 25 pages) -> `demo/corpus/` + `index.json`.
-3. When A1 core lands: run the routes, uploads, auth and both connectors' `fetch()` (they import `Document` and `ledger`) against it, then API slice 2 (including `/connectors*` routes on these functions).
+1. Seed the demo Notion wiki once the parent page exists; cache it to `demo/corpus/notion/`.
+2. API slice 2: `/health`, `/me/aws*`, `/me/models*`, `/connectors*` (on `connectors/composio.py`), `/sources/preview` (10 pages / 20 s cap), spot-check, export, files + `/url`, presets.
+3. `connectors/sync.py` (P1) so A1's resync can run.
+4. Frontend integration with the `claude/bob-web` session.
