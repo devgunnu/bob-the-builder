@@ -13,7 +13,7 @@ Source of truth stays `PLAN.md` and `CONTRACTS.md` (v4.1); this file records wha
 | 2. API slice 1 (parsers, uploads, auth, SSE, thin-path routes) | G1 | `gunbir/integration` | Done; runs on A1's real core; 44 G1/G2 tests pass |
 | 3. Firecrawl + Composio (Notion) connectors | G2 | `gunbir/integration` | Done; real crawl, real Notion browse + fetch |
 | 3b. Demo docs corpus (`demo/corpus/`, 25 pages) | G2 | `gunbir/integration` | Done |
-| 3c. Demo Notion wiki (6 fictional pages) | G2 | `gunbir/integration` | Drafted + seed script; waiting on one parent page in Notion |
+| 3c. Demo Notion wiki (6 fictional pages) | G2 | `gunbir/integration` | Done: seeded in Notion, cached to `demo/corpus/notion/` |
 | 4a. `/api/health` + container boot fix (`python-multipart`) | G1 | `gunbir/integration` | Done; container-style boot verified |
 | 4. API slice 2 (`/me/aws*`, `/me/models*`, `/connectors*`, preview, spot-check, export, files + `/url`, presets) | G1 | | Next |
 | 5. Jira / Confluence, `sync.py` (P1; orchestrator resync needs `sync.py`) | G2 | | Later |
@@ -23,7 +23,6 @@ Source of truth stays `PLAN.md` and `CONTRACTS.md` (v4.1); this file records wha
 
 | From | What | Logged in |
 |---|---|---|
-| Gunbir | Create Notion page "Bob Demo – Support Wiki (fictional)" and share it with the Composio connection; then `demo/seed_notion.py` creates the 6 pages and `demo/build_corpus.py --notion-only` caches them | |
 | A1 | One stale test in `test_orchestrator.py` (`test_create_job_429_and_missing_stage_error`) assumes the G1 stage is missing | `CHANGES_REQUESTED.md` |
 | A1 | Optional: `_seeds` passes `owner_id=job.owner_id` to `read_upload` | `CHANGES_REQUESTED.md` |
 | A1 / team | Keys for a full local run: AWS credentials (Bedrock), `JEV_API_KEY`, `SCALEDOWN_API_KEY` (new names; contract §9 still says `OPENROUTER_API_KEY`) | |
@@ -81,6 +80,11 @@ API (works once A1 core lands): `backend/run.sh` serves on `:8000`; the Vite dev
 
 ## Log
 
+### 2026-10-31: demo Notion wiki seeded (`gunbir/integration`)
+- `demo/seed_notion.py --create-parent-under "Weekly To-do List"`: Composio cannot create root-level pages, so the script created the parent "Bob Demo – Support Wiki (fictional)" (`40a41e04-143a-81fc-b9ae-c9bdf9e107f4`) under the one page the connection could see, then the 6 pages under it. The create tool was enabled only for the run; confirmed afterwards that the auth config is back to the 5 read-only tools. The parent can be moved to the top level in Notion at any time.
+- **Bug found and fixed:** Notion returns tables as `<table><tr><td>`; `notion_to_markdown` stripped the tags and put every cell on its own line, losing which value belongs to which row. It now turns Notion tables into markdown tables (outside code fences, `|` escaped). New test with the real structure.
+- `demo/build_corpus.py --notion-only` cached all 6 pages through the normal read path. Round trip vs the source drafts: every table row identical, no number lost, no Notion tags left.
+
 ### 2026-10-31: cleared the deploy path for A5 (`gunbir/integration`, `d4448fe`)
 - Merged Aaditya's latest `a1-core` (his own integration of A2/A3/A4 + `c3a260f`: new model fields `Cell.mix_weights/mix_kept`, `CostSummary.by_purpose`, `Row.chunk_ids/absent_topic/premise_evidence_id`; Jev + triage config defaults). Table conflict resolved by row, keeping his "done" statuses.
 - **Deploy blocker found and fixed:** a clean `pip install ./backend` (the Dockerfile step) gave an app that crashed at import (FastAPI needs `python-multipart` for `POST /uploads`), so the Lambda readiness check on `/api/ping` could never pass. Added `python-multipart` (+ dev `reportlab`) with `uv add`; pyproject + uv.lock updated.
@@ -127,7 +131,6 @@ API (works once A1 core lands): `backend/run.sh` serves on `:8000`; the Vite dev
 - About 20 Firecrawl credits used. `.env` holds `FIRECRAWL_API_KEY`; it is gitignored and never staged.
 
 ## Next
-1. Seed the demo Notion wiki once the parent page exists; cache it to `demo/corpus/notion/`.
-2. API slice 2: `/me/aws*`, `/me/models*`, `/connectors*` (on `connectors/composio.py`), `/sources/preview` (10 pages / 20 s cap), spot-check, export, files + `/url`, presets.
-3. `connectors/sync.py` (P1) so A1's resync can run.
-4. Frontend integration with the `claude/bob-web` session.
+1. API slice 2: `/me/aws*`, `/me/models*`, `/connectors*` (on `connectors/composio.py`), `/sources/preview` (10 pages / 20 s cap), spot-check, export, files + `/url`, presets.
+2. `connectors/sync.py` (P1) so A1's resync can run.
+3. Frontend integration with the `claude/bob-web` session.

@@ -176,7 +176,50 @@
       "hash": "42553bc9d5bab4f19e91ae7131cff1f5a2cf552d"
     }
   ],
-  "notion": [],
+  "notion": [
+    {
+      "file": "notion/reply-style-guide-and-canned-replies.md",
+      "uri": "notion://40a41e04-143a-810a-bd05-cfc5a94e92eb",
+      "title": "Reply style guide and canned replies",
+      "chars": "1384",
+      "hash": "e380cecb711cb187e5ad634a2061c85469dee742"
+    },
+    {
+      "file": "notion/enterprise-and-plan-change-hand-offs.md",
+      "uri": "notion://40a41e04-143a-81b1-af40-daef1b307de0",
+      "title": "Enterprise and plan-change hand-offs",
+      "chars": "1425",
+      "hash": "723082c8d9531aa1f51d6f10b92aa13e3618ae06"
+    },
+    {
+      "file": "notion/refunds-and-credit-adjustments.md",
+      "uri": "notion://40a41e04-143a-81a1-af98-d87397c2285e",
+      "title": "Refunds and credit adjustments",
+      "chars": "1704",
+      "hash": "5760d3385b1e6f61ed221e93296a15331e4f3d28"
+    },
+    {
+      "file": "notion/known-issues-and-workarounds.md",
+      "uri": "notion://40a41e04-143a-8123-becd-dadd993345c8",
+      "title": "Known issues and workarounds",
+      "chars": "2022",
+      "hash": "cac916f900cd42f8a09ce7e2cbddd51c9d24c425"
+    },
+    {
+      "file": "notion/escalation-policy.md",
+      "uri": "notion://40a41e04-143a-816c-8dd5-d2776cbf4d0b",
+      "title": "Escalation policy",
+      "chars": "2244",
+      "hash": "0830c545eb1e7927c6ec901e64fa6447e270a857"
+    },
+    {
+      "file": "notion/support-faq-internal.md",
+      "uri": "notion://40a41e04-143a-81e5-81f6-f6c6fe79ee76",
+      "title": "Support FAQ (internal)",
+      "chars": "2417",
+      "hash": "b45ecdc7a53ce4b5a603269c6cbfc0d0d194fb7f"
+    }
+  ],
   "source": {
     "mode": "curated",
     "url": "https://docs.firecrawl.dev",
@@ -210,5 +253,5 @@
       "/features/threat-protection"
     ]
   },
-  "built_at": "2026-10-31T02:36:10+00:00"
+  "built_at": "2026-10-31T02:52:31+00:00"
 }

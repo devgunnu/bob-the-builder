@@ -4,8 +4,10 @@ Bob's Notion auth config is read-only (bob.connectors.composio.TOOLKITS). This s
 adds NOTION_CREATE_NOTION_PAGE to it for the duration of the run and always restores
 the read-only list afterwards, even on failure.
 
-Before running: create an empty Notion page titled PARENT_TITLE and share it with the
-Composio connection (page menu -> Connections). Pages are created under it.
+Pages are created under a parent page titled PARENT_TITLE. Either create it in Notion
+and share it with the Composio connection (page menu -> Connections), or pass
+`--create-parent-under "<title of a page the connection can see>"` and the script
+creates the parent there (Composio cannot create root-level pages).
 Re-running skips pages whose title already exists.
 
 Usage (repo root, COMPOSIO_API_KEY in .env):
@@ -26,6 +28,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PAGES_DIR = REPO_ROOT / "demo" / "notion_pages"
 PARENT_TITLE = "Bob Demo – Support Wiki (fictional)"
 CREATE_TOOL = "NOTION_CREATE_NOTION_PAGE"
+PARENT_BODY = (
+    "Fictional internal support wiki written by the Bob team for the Bob demo. "
+    "These pages are not Firecrawl's real internal policies."
+)
 
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 load_dotenv(REPO_ROOT / ".env")
@@ -56,6 +62,7 @@ async def set_tools(config_id: str, tools: list[str]) -> None:
 async def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--user", default="local", help="Bob user id that owns the Notion connection")
+    parser.add_argument("--create-parent-under", help="title of a visible page to create the parent under")
     args = parser.parse_args()
 
     connections = await cz.connections(user_id=args.user)
@@ -66,10 +73,12 @@ async def main() -> int:
 
     visible = await cz.browse("notion", account_id, "", user_id=args.user)
     parent = next((p for p in visible if p["title"] == PARENT_TITLE), None)
-    if parent is None:
+    host = next((p for p in visible if p["title"] == args.create_parent_under), None)
+    if parent is None and host is None:
         print(
             f"Parent page {PARENT_TITLE!r} is not shared with the connection.\n"
-            "Create it in Notion and add the connection under its ... -> Connections.",
+            "Create it in Notion and add the connection under its ... -> Connections,\n"
+            "or pass --create-parent-under with the title of a page the connection can see.",
             file=sys.stderr,
         )
         return 1
@@ -80,6 +89,16 @@ async def main() -> int:
     read_only = list(tools.read_only)
     await set_tools(config_id, [*read_only, CREATE_TOOL])
     try:
+        if parent is None:
+            data = await cz._execute(
+                CREATE_TOOL,
+                {"parent_id": host["id"], "title": PARENT_TITLE, "markdown": PARENT_BODY},
+                account_id=account_id,
+                user_id=args.user,
+                version=tools.version,
+            )
+            parent = {"id": str(data.get("id")), "title": PARENT_TITLE}
+            print(f"created parent: {PARENT_TITLE} ({parent['id']}) under {host['title']!r}")
         for title, body in page_sources():
             if title in existing:
                 print(f"skip (exists): {title}")
