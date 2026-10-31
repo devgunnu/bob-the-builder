@@ -1,7 +1,6 @@
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 
-const AuthGate = lazy(async () => ({ default: (await import("./auth/AuthGate")).AuthGate }));
 const AccountScreen = lazy(() => import("./screens/Account"));
 const BuildScreen = lazy(() => import("./screens/Build"));
 const Home = lazy(() => import("./screens/Home"));
@@ -21,14 +20,14 @@ export default function App() {
       <Suspense fallback={<LoadingRoute />}>
         <Routes>
           <Route path="/oauth/callback" element={<OAuthCallback />} />
-          <Route path="*" element={<AuthGate><SignedInRoutes /></AuthGate>} />
+          <Route path="*" element={<AppRoutes />} />
         </Routes>
       </Suspense>
     </BrowserRouter>
   );
 }
 
-function SignedInRoutes() {
+function AppRoutes() {
   return (
       <Routes>
         <Route path="/" element={<Home />} />

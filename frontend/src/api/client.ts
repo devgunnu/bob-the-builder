@@ -1,8 +1,6 @@
-// Typed client: one function per route in .agents/CONTRACTS.md section 6, with
-// the bearer token on every call (D27), plus an authenticated SSE helper (section 8).
+// Typed client and SSE helper for the Bob API.
 
 import { fetchEventSource } from "@microsoft/fetch-event-source";
-import { authHeader, onUnauthorized } from "../auth/session";
 import type {
   AvailableModels,
   AwsSetup,
@@ -62,16 +60,11 @@ async function request<T>(path: string, init: RequestInit = {}, raw = false): Pr
       ...init,
       headers: {
         ...(init.body instanceof FormData || init.body === undefined ? {} : { "Content-Type": "application/json" }),
-        ...(await authHeader()),
         ...init.headers,
       },
     });
   } catch (e) {
     throw new ApiError(0, "Can't reach the Bob API. Is the backend running?", undefined, String(e));
-  }
-  if (res.status === 401) {
-    void onUnauthorized();
-    throw new ApiError(401, "Please sign in again.");
   }
   if (!res.ok) {
     let body: { error?: string; provider?: string; detail?: string } = {};
@@ -141,7 +134,7 @@ export const api = {
     request<Report>(`/jobs/${id}/rows/${rowId}/spot-check`, { method: "POST", ...json({ ok }) }),
   export: (id: string, preset: string, formats: string[]) =>
     request<{ files: Record<string, string> }>(`/jobs/${id}/export`, { method: "POST", ...json({ preset, formats }) }),
-  /** Signed download URL (a plain link can't send the auth header). */
+  /** Download URL for a generated file. */
   fileUrl: (id: string, name: string) => request<{ url: string }>(`/jobs/${id}/files/${filePath(name)}/url`).then((r) => r.url),
   async download(id: string, name: string) {
     const url = await api.fileUrl(id, name);
@@ -168,8 +161,7 @@ function saveBlob(blob: Blob, name: string) {
 const TERMINAL = new Set(["done", "error", "cancelled"]);
 
 /**
- * Subscribe to a job's SSE stream with the auth header (EventSource can't send
- * one). Each (re)connect gets a fresh token and sends Last-Event-ID. Events are
+ * Subscribe to a job's SSE stream. Each reconnect sends Last-Event-ID. Events are
  * de-duplicated by id. The stream closes only on done, error or cancelled.
  */
 export function subscribeJob(jobId: string, onEvent: (e: BobEvent, id: number) => void, onError?: (e: unknown) => void) {
@@ -180,18 +172,13 @@ export function subscribeJob(jobId: string, onEvent: (e: BobEvent, id: number) =
   void fetchEventSource(`${API_BASE}/jobs/${jobId}/events`, {
     signal: ctrl.signal,
     openWhenHidden: true,
-    // A custom fetch so every reconnect gets a fresh token and our Last-Event-ID.
+    // Send the last seen event on reconnect.
     fetch: async (input, init) => {
       const headers = new Headers(init?.headers);
-      for (const [k, v] of Object.entries(await authHeader())) headers.set(k, v);
       if (lastId >= 0) headers.set("Last-Event-ID", String(lastId));
       return fetch(input, { ...init, headers });
     },
     async onopen(res) {
-      if (res.status === 401) {
-        void onUnauthorized();
-        throw new Error("sign in required");
-      }
       if (!res.ok) throw new Error(`stream ${res.status}`);
     },
     onmessage(msg) {
