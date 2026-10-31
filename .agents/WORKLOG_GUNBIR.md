@@ -2,7 +2,7 @@
 
 Running log of Gunbir's backend work. Newest entries at the top of the log.
 Frontend (G3, G4) is built in a separate session on branch `claude/bob-web`.
-**Working branch from 2026-10-31: `gunbir/integration`** = `main` + all of Aaditya's branches (`a1-core`, `a2-read`, `a3-plan-write`, `a4-verify-ship`) + `claude/bob-web` + `codex/infra-deployment` + our former `gunbir/g1-api` and `gunbir/g2-connectors` (both deleted after merging).
+**Working branch from 2026-10-31: `gunbir/integration`** = `main` + Aaditya's former `a1-core`, `a2-read`, `a3-plan-write`, `a4-verify-ship` + former `claude/bob-web` + `codex/infra-deployment` + our former `gunbir/g1-api` and `gunbir/g2-connectors`. Merged branches were deleted on GitHub except `codex/infra-deployment` (Aaditya's CodeBuild deploys from it). Remote branches left: `main`, `gunbir/integration`, `codex/infra-deployment`.
 Source of truth stays `PLAN.md` and `CONTRACTS.md` (v4.1); this file records what is built, what is decided, and what is waiting on whom.
 
 ## Status
@@ -15,7 +15,7 @@ Source of truth stays `PLAN.md` and `CONTRACTS.md` (v4.1); this file records wha
 | 3b. Demo docs corpus (`demo/corpus/`, 25 pages) | G2 | `gunbir/integration` | Done |
 | 3c. Demo Notion wiki (6 fictional pages) | G2 | `gunbir/integration` | Done: seeded in Notion, cached to `demo/corpus/notion/` |
 | 4a. `/api/health` + container boot fix (`python-multipart`) | G1 | `gunbir/integration` | Done; container-style boot verified |
-| 4. API slice 2 (`/me/aws*`, `/me/models*`, `/connectors*`, preview, spot-check, export, files + `/url`, presets, resync 501) | G1 | `gunbir/integration` | Done: all 30 contract routes; `/uploads/presign` (P1) waits on `Blobs.put_url` |
+| 4. API slice 2 (`/me/aws*`, `/me/models*`, `/connectors*`, preview, spot-check, export, files + `/url`, presets, resync 501) | G1 | `gunbir/integration` | Done: all contract routes, including `/uploads/presign` (P1) |
 | 5. Jira / Confluence, `sync.py` (P1; orchestrator resync needs `sync.py`) | G2 | | Later |
 | 6. Integration with the frontend | G1 + G3/G4 | | After 4 |
 
@@ -80,6 +80,15 @@ API (works once A1 core lands): `backend/run.sh` serves on `:8000`; the Vite dev
 
 ## Log
 
+### 2026-10-31: branch cleanup, presigned uploads, S3 import fix (`gunbir/integration`, `0d5eeb9`)
+- Merged 2 new `codex/infra-deployment` commits (CodeBuild credential reuse, manual starts); pushed `gunbir/integration`; deleted `aaditya/a1-core`, `a2-read`, `a3-plan-write`, `a4-verify-ship` and `claude/bob-web` on GitHub after checking each is fully contained. Kept `codex/infra-deployment` (Aaditya's CodeBuild deploys from it).
+- `Blobs.put_url(key, content_type, content_length, expires_s=900)` in `core/blobs.py` (local: None) and `aws/blobs.py`. boto3 had presigned the PUT with SigV2, which does not sign Content-Length (any size accepted); the upload URL now comes from a SigV4 client and signs `content-length;content-type;host`.
+- **Cloud bug found and fixed:** `bob/aws/blobs.py` failed at import (`list` method shadowing `list[str]` annotations), so uploads, the cache, exports and the worker would crash in aws mode while `/api/ping` still passed. One-line fix; all `bob.aws.*` modules import.
+- `POST /uploads/presign` (200 MB cap, type check, owner + `.presign` markers) and `PUT /uploads/{id}/content` (local mode: size must match; 409 in aws mode, where the browser uploads to S3). `read_upload` hides both marker files.
+- Tests: local presign end to end, bad type 400, too big 413, size mismatch 400, other user 404, S3 URL signs size + type. Full suite: 164 passed (rest: missing AWS / Jev / ScaleDown keys + A1's stale test). Fresh-install boot: `/api/ping` 200.
+- Asked A5 (table): data bucket CORS must allow browser `PUT` from `BOB_PUBLIC_URL`.
+
+
 ### 2026-10-31: branches combined and cleaned, API slice 2 (`gunbir/integration`)
 - Merged `claude/bob-web` (sprites, row drawer, paged history, accessibility) and `codex/infra-deployment` (CloudShell deploy prep) cleanly. Combined test pass: backend 144 then 161 passed (all G1/G2 pass; the rest need AWS / Jev / ScaleDown keys, plus A1's one stale test); frontend `tsc -b && vite build` passes.
 - Deleted `gunbir/g1-api` and `gunbir/g2-connectors` locally and on GitHub after checking both are fully contained in `gunbir/integration`. Aaditya's branches, `claude/bob-web` and `codex/infra-deployment` are also fully contained; left for their owners to delete.
@@ -140,5 +149,5 @@ API (works once A1 core lands): `backend/run.sh` serves on `:8000`; the Vite dev
 
 ## Next
 1. `connectors/sync.py` (P1) so A1's resync can run (the route returns 501 until then).
-2. `POST /uploads/presign` once `Blobs.put_url` exists. so A1's resync can run.
-3. Frontend integration (all routes the frontend calls now exist) with the `claude/bob-web` session.
+2. Frontend integration: every route the frontend calls now exists. Presign: aws returns an S3 URL; local returns `/api/uploads/{id}/content`, which needs the Authorization header.
+3. A full real job end to end once AWS credentials (and Jev / ScaleDown keys) are available, locally or on the deployed stack.
