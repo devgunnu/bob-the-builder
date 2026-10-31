@@ -79,6 +79,19 @@ async def test_create_job_uses_orchestrator_412(client):
     assert r.status_code == 412 and r.json() == {"error": "connect AWS first"}
 
 
+async def test_crash_keeps_error_shape(monkeypatch):
+    # A real failure inside the orchestrator (its store read raises) must still answer {error, detail}.
+    async def broken_list_jobs(owner_id: str):
+        raise RuntimeError("store unavailable")
+
+    monkeypatch.setattr(get_orchestrator(), "list_jobs", broken_list_jobs)
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://bob") as c:
+        r = await c.get("/api/jobs")
+    assert r.status_code == 500
+    assert r.json() == {"error": "internal error", "detail": "RuntimeError: store unavailable"}
+
+
 async def test_unknown_job_is_404_everywhere(client):
     for path in ("/api/jobs/nope", "/api/jobs/nope/events", "/api/jobs/nope/rows", "/api/jobs/nope/rows/r1"):
         r = await client.get(path)
@@ -99,3 +112,23 @@ async def test_another_users_upload_is_not_usable(client):
             SourceSpec(kind="upload", upload_ids=ids), "t-job", noop_progress, user_id="intruder"
         )
     assert (await client.get("/api/jobs")).json() == []
+
+
+async def test_health_reports_each_provider_for_real(client, monkeypatch):
+    for line in (Path(__file__).resolve().parents[2] / ".env").read_text().splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key.strip() in ("FIRECRAWL_API_KEY", "COMPOSIO_API_KEY"):
+            monkeypatch.setenv(key.strip(), value.strip())
+    r = await client.get("/api/health")
+    assert r.status_code == 200
+    keys = r.json()["keys"]
+    assert set(keys) == {"bedrock", "jev", "scaledown", "firecrawl", "composio"}
+    assert all(isinstance(v, str) and v for v in keys.values())
+    assert keys["firecrawl"] == "ok" and keys["composio"] == "ok"
+
+
+def test_health_scrubs_keys_from_errors(monkeypatch):
+    from bob.api.health import scrub
+
+    monkeypatch.setenv("JEV_API_KEY", "jev-secret-123456")
+    assert scrub("401 for key jev-secret-123456 at /v1") == "401 for key *** at /v1"

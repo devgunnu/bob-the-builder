@@ -66,6 +66,14 @@ async def config_public() -> dict[str, Any]:
     }
 
 
+@router.get("/health")
+async def health(user: User, orchestrator: Orch) -> dict[str, Any]:
+    """One cheap real call per provider (bob.api.health). Needs a signed-in user."""
+    from bob.api.health import health as run_health
+
+    return await run_health(user, orchestrator.health_job(user))
+
+
 # ---------- user ----------
 
 
