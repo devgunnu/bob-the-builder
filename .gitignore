@@ -1,0 +1,12 @@
+.env
+secrets.json
+runs/
+cdk.out/
+infra/outputs.json
+node_modules/
+dist/
+__pycache__/
+.venv/
+*.stackdump
+.pytest_cache/
+.ruff_cache/
