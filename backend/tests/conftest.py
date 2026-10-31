@@ -3,5 +3,7 @@
 import os
 import tempfile
 
-os.environ.setdefault("BOB_RUNS_DIR", tempfile.mkdtemp(prefix="bob-test-runs-"))
+# Unconditional: the documented test command sources ../.env (BOB_RUNS_DIR=runs) first, and test
+# jobs must never land in the real local runs dir that the app shows.
+os.environ["BOB_RUNS_DIR"] = tempfile.mkdtemp(prefix="bob-test-runs-")
 os.environ.setdefault("BOB_ENV", "local")

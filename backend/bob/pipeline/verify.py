@@ -218,15 +218,12 @@ class _VerifyState:
     evidence_by_id: dict[str, Evidence] | None = None
 
 
-_STATE_ATTR = "_a4_verify_state"
-
-
 def _state(ctx: GenContext, s: EffectiveSettings) -> _VerifyState:
     """Per-job state on the GenContext (it lives only inside run_job; never in module globals)."""
-    st = getattr(ctx, _STATE_ATTR, None)
+    st = ctx.verify_state
     if st is None:
         st = _VerifyState(dedup=_DedupIndex(), judge_sem=asyncio.Semaphore(max(1, s.judge_concurrency)))
-        setattr(ctx, _STATE_ATTR, st)
+        ctx.verify_state = st
     if st.evidence_by_id is None or len(st.evidence_by_id) != len(ctx.evidence.items):
         st.evidence_by_id = {e.id: e for e in ctx.evidence.items}
         nums: set[str] = set()
@@ -744,7 +741,7 @@ def _row(
 ) -> Row:
     chunks = cited_chunks(cand, ctx)
     evidence = list(o.matched)
-    st = getattr(ctx, _STATE_ATTR, None)
+    st = ctx.verify_state
     if cand.premise_evidence_id and st and st.evidence_by_id:
         ev = st.evidence_by_id.get(cand.premise_evidence_id)
         if ev is not None:

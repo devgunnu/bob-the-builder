@@ -247,10 +247,10 @@ async def test_export_validation_and_spot_check_404(client, done_job):
     assert r.status_code == 404
 
 
-async def test_resync_is_501_until_sync_lands(client, done_job):
-    job, _ = done_job
+async def test_resync_needs_a_plan(client, done_job):
+    job, _ = done_job  # done, but it never had a plan
     r = await client.post(f"/api/jobs/{job.id}/resync")
-    assert r.status_code == 501 and r.json()["error"] == "re-sync is not available yet"
+    assert r.status_code == 409 and r.json()["error"] == "this job has no plan to re-sync"
 
 
 async def test_unknown_or_foreign_job_routes_404(client, done_job):

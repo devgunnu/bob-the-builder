@@ -316,8 +316,7 @@ async def file_download(job_id: str, name: str, user: User, orchestrator: Orch) 
 
 @router.post("/jobs/{job_id}/resync")
 async def resync(job_id: str, user: User, orchestrator: Orch) -> Job:
+    """Re-fetch the sources of a finished job and re-check the rows they changed (CONTRACTS §10).
+    409 unless the job is done with a plan; 429 at capacity."""
     await owned_job(job_id, user, orchestrator)
-    try:
-        return await orchestrator.resync(job_id)
-    except NotImplementedError as exc:
-        raise ApiError(501, "re-sync is not available yet", detail=str(exc)) from exc
+    return await orchestrator.resync(job_id)

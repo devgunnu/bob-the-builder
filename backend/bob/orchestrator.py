@@ -35,6 +35,7 @@ from bob.core.events import EventLog, JobEmitter
 from bob.core.models import (
     TERMINAL_STATUSES,
     BedrockAccess,
+    Candidate,
     Cell,
     Chunk,
     Document,
@@ -101,10 +102,13 @@ _STAGES: dict[str, tuple[str, ...]] = {
     "verify": ("bob.pipeline.verify",),
     "build_dpo_pairs": ("bob.pipeline.verify", "bob.pipeline.dpo"),
     "build_report": ("bob.pipeline.report",),
+    "register_kept": ("bob.pipeline.verify",),
     "export": ("bob.export", "bob.export.presets", "bob.export.formats"),
     # G1
     "fetch_documents": ("bob.connectors",),
     "read_upload": ("bob.connectors.upload",),
+    # G2
+    "refetch_diff": ("bob.connectors.sync",),
 }
 _OWNER = {
     "chunk_documents": "A2",
@@ -122,8 +126,10 @@ _OWNER = {
     "build_dpo_pairs": "A4",
     "build_report": "A4",
     "export": "A4",
+    "register_kept": "A4",
     "fetch_documents": "G1",
     "read_upload": "G1",
+    "refetch_diff": "G2",
 }
 
 
@@ -437,7 +443,11 @@ class Orchestrator:
         elif run.budget_hit and eff.dpo_mode != "off":
             await run.log("warn", "budget guard: DPO pairs skipped")
 
-        # report + export
+        await self._report_and_export(run, pairs)
+
+    async def _report_and_export(self, run: _Run, pairs: list[DPOPair]) -> None:
+        """Report, export (the job preset, "full", and "dpo" when pairs exist), then done."""
+        job = run.job
         run.check_cancel()
         await run.status(JobStatus.reporting, "building the report")
         rows = await self._all_rows(job.id)
@@ -463,7 +473,171 @@ class Orchestrator:
         await run.emit.emit("done", {"files": files})
 
     async def _resync_body(self, run: _Run) -> None:
-        raise NotImplementedError("resync is P1 (needs G2 connectors/sync.py)")
+        """CONTRACTS section 10. Re-fetch the sources (G2 sync.refetch_diff). Nothing changed: done at once.
+        Else read the current documents again, re-verify the kept rows whose spans cite a changed or removed
+        document (a failing row becomes rejected "stale: source changed (...)"), give the cells that lost rows
+        one gap round (reason "resync"), drop DPO pairs of rejected rows, then report and export again."""
+        job = run.job
+        eff = settings_for(job)
+        if job.plan is None:
+            raise RuntimeError("resync needs a job with a plan")
+
+        await run.status(JobStatus.ingesting, "re-fetching sources")
+        old_docs = await self._load_docs(job.id)
+
+        async def progress(done: int, total: int, detail: str) -> None:
+            await run.progress("fetch", done, total, detail)
+
+        refetch_diff = stage("refetch_diff")
+        new_docs, diff, stale = await refetch_diff(job, old_docs, progress)
+        run.check_cancel()
+        added, changed, removed = diff["added"], diff["changed"], diff["removed"]
+        await run.log("info", f"resync: {len(added)} added, {len(changed)} changed, {len(removed)} removed")
+        if not new_docs:
+            raise RuntimeError("no documents were fetched from the sources")
+        if not (added or changed or removed):
+            await run.progress("fetch", len(new_docs), len(new_docs), "no changes")
+            await run.status(JobStatus.done, "no changes in the sources")
+            await run.emit.emit("done", {"files": job.files})
+            return
+        await self._save_docs(job.id, new_docs)
+        await run.progress("fetch", len(new_docs), len(new_docs), f"{len(new_docs)} documents")
+        await run.counts(docs=len(new_docs))
+
+        await run.status(JobStatus.reading, "reading documents")
+        seeds = await self._seeds(run)
+        chunks, topics, evidence, retriever = await self._read(run, new_docs)
+        run.check_cancel()
+        ctx = GenContext(
+            job=job,
+            docs={d.id: d for d in new_docs},
+            chunks=chunks,
+            topics=topics,
+            evidence=evidence,
+            retriever=retriever,
+            seeds=seeds,
+            emit=run.emit.emit,
+        )
+
+        kept = await self._all_rows(job.id, "kept")
+        recheck = [r for r in kept if any(span.doc_id in stale for span in r.spans)]
+        recheck_ids = {r.id for r in recheck}
+        await stage("register_kept")(ctx, [r for r in kept if r.id not in recheck_ids])
+        cells = {c.id: c for c in job.plan.cells}
+        lost: set[str] = set()
+        dropped: set[str] = set()
+        if recheck:
+            await run.status(JobStatus.building, f"re-checking {len(recheck)} rows")
+            verify = stage("verify")
+            old = {r.id: r for r in recheck}
+            rows: list[Row] = await verify([self._as_candidate(job, r) for r in recheck], ctx)
+            for row in rows:
+                prev = old[row.id]
+                row.created_at, row.spot_check = prev.created_at, prev.spot_check
+                row.cost_usd = prev.cost_usd + row.cost_usd
+                if row.verdict == "rejected":
+                    row.reject_reason = f"stale: source changed ({row.reject_reason or 'a check failed'})"
+                    dropped.add(row.id)
+                    cell = cells.get(row.cell_id)
+                    if cell is not None:
+                        cell.kept -= 1
+                        cell.rejected += 1
+                        lost.add(cell.id)
+            await self.store.put_rows(job.id, rows)
+            job.counts["kept"] = job.counts.get("kept", 0) - len(dropped)
+            job.counts["rejected"] = job.counts.get("rejected", 0) + len(dropped)
+            for row in rows:
+                user = next((m.content for m in row.messages if m.role == "user"), "")
+                await run.emit.emit(
+                    "row",
+                    {
+                        "id": row.id,
+                        "cell_id": row.cell_id,
+                        "verdict": row.verdict,
+                        "reject_reason": row.reject_reason,
+                        "case_type": row.case_type,
+                        "user_preview": user[:160],
+                        "confidence": row.confidence,
+                        "routed_to_judge": row.routed_to_judge,
+                    },
+                )
+            for cell_id in lost:
+                c = cells[cell_id]
+                await run.emit.emit(
+                    "cell.update",
+                    {
+                        "cell_id": c.id,
+                        "generated": c.generated,
+                        "kept": c.kept,
+                        "rejected": c.rejected,
+                        "judged": c.judged,
+                        "target": c.target,
+                    },
+                )
+            await run.counts()
+            await run.cost()
+            await run.save()
+        await run.log("info", f"resync: {len(recheck)} rows re-checked, {len(dropped)} now rejected as stale")
+
+        if lost and not run.budget_hit:
+            run.check_cancel()
+            gaps = await asyncio.to_thread(stage("plan_gap_round"), job, job.plan.cells)
+            work = [(cells[c.id], n) for c, n in gaps if n > 0 and c.id in lost]
+            if work:
+                job.round += 1
+                await run.status(JobStatus.filling_gaps, f"round {job.round}")
+                await run.emit.emit(
+                    "round",
+                    {
+                        "n": job.round,
+                        "reason": "resync",
+                        "cells": [c.id for c, _ in work],
+                        "planned": sum(n for _, n in work),
+                    },
+                )
+                await self._round(run, ctx, work, eff)
+
+        pairs = await self._load_pairs(job.id)
+        if dropped and pairs:
+            pairs = [p for p in pairs if p.row_id not in dropped]
+            await self._save_pairs(job.id, pairs)
+            await run.counts(dpo_pairs=len(pairs))
+        await self._report_and_export(run, pairs)
+
+    @staticmethod
+    def _as_candidate(job: Job, row: Row) -> Candidate:
+        return Candidate(
+            id=row.id,
+            job_id=row.job_id,
+            cell_id=row.cell_id,
+            round=row.round,
+            case_type=row.case_type,
+            coords=row.coords,
+            messages=row.messages,
+            chunk_ids=row.chunk_ids,
+            premise_evidence_id=row.premise_evidence_id,
+            absent_topic=row.absent_topic,
+            writer_model=job.models.writer.model_id,
+            cost_usd=0.0,
+        )
+
+    async def _save_docs(self, job_id: str, docs: list[Document]) -> None:
+        """One JSON per document, plus docs.json: the ids of the current fetch (removed docs drop out)."""
+        for d in docs:
+            await self.blobs.put(
+                f"runs/{job_id}/docs/{d.id}.json", d.model_dump_json().encode(), "application/json"
+            )
+        ids = json.dumps(sorted(d.id for d in docs)).encode()
+        await self.blobs.put(f"runs/{job_id}/docs.json", ids, "application/json")
+
+    async def _load_docs(self, job_id: str) -> list[Document]:
+        """The documents of the last fetch (docs.json when a resync wrote it, else every saved doc)."""
+        index = f"runs/{job_id}/docs.json"
+        if await self.blobs.exists(index):
+            keys = [f"runs/{job_id}/docs/{i}.json" for i in json.loads(await self.blobs.get(index))]
+        else:
+            keys = [k for k in await self.blobs.list(f"runs/{job_id}/docs/") if k.endswith(".json")]
+        return [Document.model_validate_json(await self.blobs.get(k)) for k in keys]
 
     async def _ingest(self, run: _Run) -> list[Document]:
         job = run.job
@@ -481,10 +655,7 @@ class Orchestrator:
             run.check_cancel()
         if not docs:
             raise RuntimeError("no documents were fetched from the sources")
-        for d in docs.values():
-            await self.blobs.put(
-                f"runs/{job.id}/docs/{d.id}.json", d.model_dump_json().encode(), "application/json"
-            )
+        await self._save_docs(job.id, list(docs.values()))
         await run.progress("fetch", len(docs), len(docs), f"{len(docs)} documents")
         await run.counts(docs=len(docs))
         await run.cost()
@@ -496,7 +667,7 @@ class Orchestrator:
             return []
         read_upload = stage("read_upload")
         seeds: list[list[Message]] = []
-        for name, data in await read_upload(upload_id):
+        for name, data in await read_upload(upload_id, owner_id=run.job.owner_id):
             seeds.extend(load_seeds(data, name))
         await run.log("info", f"{len(seeds)} seed examples loaded")
         return seeds
@@ -869,8 +1040,42 @@ class Orchestrator:
         return files
 
     async def resync(self, job_id: str) -> Job:
-        """P1: runner.start(id, "resync") (CONTRACTS section 10). Needs G2 connectors/sync.py."""
-        raise NotImplementedError("resync is P1 (needs G2 connectors/sync.py)")
+        """CONTRACTS section 10: runner.start(id, "resync") on a finished job (status done, no worker).
+        Anything else -> JobRunning (409). Capacity as in create_job (RunnerBusy -> 429, job unchanged).
+        Appends job.status ingesting + the "starting worker" progress event, like create_job."""
+        job = await self.get_job(job_id)
+        if job.status is not JobStatus.done or await self.runner.is_running(job_id):
+            raise JobRunning(f"only a finished job can be re-synced (status {job.status.value})")
+        if job.plan is None:
+            raise JobRunning("this job has no plan to re-sync")
+        reserve = getattr(self.runner, "reserve", None)
+        if reserve is not None:
+            await reserve(job.id, job.owner_id)
+        else:
+            check = getattr(self.runner, "check_capacity", None)
+            if check is not None:
+                await check(job.owner_id)
+        job.status = JobStatus.ingesting
+        job.stage_detail = "re-sync: starting worker"
+        job.error = None
+        job.heartbeat_at = _now()  # the watchdog measures from here, not from the first run
+        job.updated_at = _now()
+        try:
+            await self.store.put_job(job)
+            await self.events.append(
+                job.id, "job.status", {"status": job.status.value, "detail": job.stage_detail}
+            )
+            await self.events.append(
+                job.id,
+                "stage.progress",
+                {"stage": "fetch", "done": 0, "total": 0, "detail": "starting worker"},
+            )
+            await self.runner.start(job.id, "resync")
+        except BaseException:
+            if reserve is not None:
+                await self.runner.release(job.id)
+            raise
+        return job
 
     async def subscribe(self, job_id: str, last_event_id: int | None) -> AsyncIterator[Event]:
         """EventLog.subscribe with replay from last_event_id; runs the watchdog in the SSE loop.

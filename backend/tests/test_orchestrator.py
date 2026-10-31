@@ -1,7 +1,7 @@
 """Orchestrator on local backends (tmp runs_dir) with real Bedrock / STS calls for the verify methods.
 
-A2/A3/A4/G1 stage modules are not on this branch yet: the job tests check the real error path
-(a missing stage ends the job in `error` with the module name, never a hang).
+The job tests check the real error paths (a failing stage ends the job in `error`, never a hang)
+and the offline parts of resync (uploads only: no provider call).
 """
 
 import asyncio
@@ -135,7 +135,8 @@ async def test_create_job_429_and_missing_stage_error(tmp_path):
     gate.set()
     done = await _wait_terminal(o, job.id)
     assert done.status is JobStatus.error
-    assert "fetch_documents" in done.error and "G1" in done.error
+    # G1's fetch_documents is merged, so the job fails on the made-up upload id, never hangs
+    assert done.error == "UploadNotFound: upload 'u1' not found"
     types = [e.type for e in await o.events.read_after(job.id, 0)]
     assert types[:2] == ["job.status", "stage.progress"] and types[-1] == "error"
     assert done.heartbeat_at is not None
@@ -222,3 +223,79 @@ def test_load_seeds():
     jl = b'{"messages": [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}]}\n{"user": "q2", "assistant": "a2"}\n'
     assert len(load_seeds(jl, "s.jsonl")) == 2
     assert load_seeds(b"user,assistant\nq,a\n", "s.csv")[0][1].content == "a"
+
+
+async def _finished_upload_job(o: Orchestrator) -> Job:
+    """A done job over two real smoke uploads, with its fetched documents saved like _ingest does."""
+    from pathlib import Path
+
+    from bob.connectors import fetch_documents
+    from bob.connectors.upload import save_uploads
+    from bob.core.models import Axis, Cell, Plan
+
+    smoke = Path(__file__).resolve().parents[2] / "demo" / "smoke"
+    saved = await save_uploads(
+        [(n, (smoke / n).read_bytes()) for n in ("billing.md", "rate-limits.md")], owner_id="local"
+    )
+    u = await o.get_or_create_user("local", None)
+    now = datetime.now(UTC)
+    spec = JobSpec(goal="support bot", sources=[SourceSpec(kind="upload", upload_ids=[f.id for f in saved])])
+    cell = Cell(id="c1", coords={"topic": "Billing", "case_type": "answerable"}, target=5, kept=5)
+    plan = Plan(
+        goal="support bot",
+        system_prompt="You answer billing questions.",
+        axes=[Axis(name="topic", values=["Billing"]), Axis(name="case_type", values=["answerable"])],
+        cells=[cell],
+        target_rows=5,
+        est_cost_usd=0.1,
+    )
+    job = Job(
+        id=f"rs{now.strftime('%H%M%S%f')}",
+        spec=spec,
+        owner_id=u.id,
+        models=u.models,
+        status=JobStatus.done,
+        plan=plan,
+        created_at=now,
+        updated_at=now,
+    )
+
+    async def progress(done: int, total: int, detail: str) -> None:
+        return None
+
+    docs = await fetch_documents(spec.sources[0], job.id, progress, user_id=u.id)
+    await o._save_docs(job.id, docs)
+    await o.store.put_job(job)
+    return job
+
+
+async def test_resync_with_no_source_changes_is_done_at_once():
+    o = Orchestrator(runner=LocalRunner(max_workers=2, max_active_per_user=1))
+    job = await _finished_upload_job(o)
+    assert len(await o._load_docs(job.id)) == 2
+
+    started = await o.resync(job.id)
+    assert started.status is JobStatus.ingesting
+    with pytest.raises(JobRunning):  # not done any more: a second resync is refused
+        await o.resync(job.id)
+    done = await _wait_terminal(o, job.id)
+    assert done.status is JobStatus.done and done.stage_detail == "no changes in the sources"
+    assert done.error is None and done.plan == job.plan
+    events = await o.events.read_after(job.id, 0)
+    statuses = [e.data["status"] for e in events if e.type == "job.status"]
+    assert statuses[0] == "ingesting" and statuses[-1] == "done"
+    assert events[-1].type == "done"
+    logs = [e.data["message"] for e in events if e.type == "log"]
+    assert "resync: 0 added, 0 changed, 0 removed" in logs
+
+
+async def test_resync_guards():
+    o = Orchestrator(runner=LocalRunner(max_workers=2, max_active_per_user=1))
+    job = await _finished_upload_job(o)
+    for status in (JobStatus.error, JobStatus.cancelled, JobStatus.building):
+        await o.store.put_job(job.model_copy(update={"status": status, "heartbeat_at": datetime.now(UTC)}))
+        with pytest.raises(JobRunning, match="only a finished job"):
+            await o.resync(job.id)
+    await o.store.put_job(job.model_copy(update={"plan": None}))
+    with pytest.raises(JobRunning, match="no plan"):
+        await o.resync(job.id)
