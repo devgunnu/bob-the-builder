@@ -1,21 +1,29 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
-import { AuthGate } from "./auth/AuthGate";
-import AccountScreen from "./screens/Account";
-import BuildScreen from "./screens/Build";
-import Home from "./screens/Home";
-import JobList from "./screens/JobList";
-import OAuthCallback from "./screens/OAuthCallback";
-import PlanScreen from "./screens/Plan";
-import ReportScreen from "./screens/Report";
-import RowInspector from "./screens/RowInspector";
+
+const AuthGate = lazy(async () => ({ default: (await import("./auth/AuthGate")).AuthGate }));
+const AccountScreen = lazy(() => import("./screens/Account"));
+const BuildScreen = lazy(() => import("./screens/Build"));
+const Home = lazy(() => import("./screens/Home"));
+const JobList = lazy(() => import("./screens/JobList"));
+const OAuthCallback = lazy(() => import("./screens/OAuthCallback"));
+const PlanScreen = lazy(() => import("./screens/Plan"));
+const ReportScreen = lazy(() => import("./screens/Report"));
+const RowInspector = lazy(() => import("./screens/RowInspector"));
+
+function LoadingRoute() {
+  return <div className="h-full bg-void" aria-label="Loading" />;
+}
 
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/oauth/callback" element={<OAuthCallback />} />
-        <Route path="*" element={<AuthGate><SignedInRoutes /></AuthGate>} />
-      </Routes>
+      <Suspense fallback={<LoadingRoute />}>
+        <Routes>
+          <Route path="/oauth/callback" element={<OAuthCallback />} />
+          <Route path="*" element={<AuthGate><SignedInRoutes /></AuthGate>} />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }
