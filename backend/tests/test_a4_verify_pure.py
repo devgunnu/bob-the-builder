@@ -223,3 +223,27 @@ def test_verbatim_name_match_does_not_depend_on_index():
     assert find_evidence_or_text("ole", ctx) == []
     chunk.kept = False
     assert find_evidence_or_text("Role", ctx) == []
+
+
+def test_dedup_needs_shared_wording_not_just_a_close_embedding():
+    import numpy as np
+
+    from bob.pipeline.verify import _DedupIndex, check_dedup
+
+    v = np.array([1.0, 0.0])
+    near = np.array([0.99, 0.141])  # cosine 0.99 with v, like two static embeddings on one topic
+    index = _DedupIndex()
+    index.add("c1", "How do I raise my API rate limit on the Hobby plan?", v)
+    pending = _DedupIndex()
+    # different question, same topic: kept even though the embeddings are close
+    other = check_dedup(
+        "c1", "Why did my webhook retries stop after the third failure?", near, index, pending, 0.92
+    )
+    assert other.passed
+    # the same question in other words order / casing: still a near-duplicate
+    same = check_dedup("c1", "how do i raise my api rate limit on the hobby plan", near, index, pending, 0.92)
+    assert not same.passed and "Same user message" in same.detail
+    reworded = check_dedup(
+        "c1", "On the Hobby plan, how do I raise my API rate limit?", near, index, pending, 0.92
+    )
+    assert not reworded.passed and "Near-duplicate" in reworded.detail

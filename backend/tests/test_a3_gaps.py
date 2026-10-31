@@ -67,3 +67,37 @@ def test_mix_boost_follows_deficit():
     cell.mix_kept = {"persona": {"P0": 5, "P1": 5, "P2": 5, "P3": 0}}
     w = boosted_mix_weights(_job(plan=plan), cell)
     assert w["persona"] == {"P0": 0.0, "P1": 0.0, "P2": 0.0, "P3": 1.0}
+
+
+def test_writer_rows_with_repeated_slot_numbers_fill_the_free_slots():
+    # Some models number every row 1. Each row must still become a candidate, not just the first.
+    from datetime import UTC, datetime
+
+    from bob.config import default_model_roles
+    from bob.core.models import Cell, GenContext, Job, JobSpec
+    from bob.pipeline.generate import BatchResult, Slot, TopicContext, build_candidates
+
+    now = datetime.now(UTC)
+    job = Job(
+        id="slots",
+        spec=JobSpec(goal="g", sources=[]),
+        owner_id="local",
+        models=default_model_roles(),
+        created_at=now,
+        updated_at=now,
+    )
+
+    async def emit(t, d):
+        return None
+
+    ctx = GenContext(
+        job=job, docs={}, chunks={}, topics={}, evidence=None, retriever=None, seeds=[], emit=emit
+    )
+    cell = Cell(id="c1", coords={"topic": "Billing", "case_type": "answerable"}, target=3)
+    coords = {"topic": "Billing", "case_type": "answerable", "persona": "p", "difficulty": "single_fact"}
+    slots = [Slot(coords=coords, focus=["k1"]) for _ in range(3)]
+    tc = TopicContext(value="Billing", prefix="", pool=["k1"], doc_of={"k1": "d1"})
+    questions = ["Where do I see my invoices?", "Can I pay yearly instead?", "Why was my card charged twice?"]
+    rows = [{"slot": 1, "user": q, "assistant": "Here is how.", "chunk_ids": ["k1"]} for q in questions]
+    out = build_candidates(ctx, cell, "answerable", slots, BatchResult(rows=rows, cost_usd=0.3), tc, set(), 1)
+    assert [c.messages[0].content for c in out] == questions

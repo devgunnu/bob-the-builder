@@ -207,7 +207,9 @@ async def topic_context(ctx: GenContext, value: str) -> TopicContext:
     pool = _topic_pool(ctx, members)
     if not pool:
         raise ValueError(f"topic {value!r} has no kept passages")
-    texts = await asyncio.gather(*(compress(ctx.chunks[c].text, job=ctx.job, prompt=ctx.job.spec.goal) for c in pool))
+    texts = await asyncio.gather(
+        *(compress(ctx.chunks[c].text, job=ctx.job, prompt=ctx.job.spec.goal) for c in pool)
+    )
     chunks = [ctx.chunks[c] for c in pool]
     return TopicContext(
         value=value,
@@ -373,14 +375,22 @@ def build_candidates(
     job = ctx.job
     s = settings_for(job)
     pool = set(tc.pool)
+    # Rows go to the slot they name. A row with a missing, repeated or out-of-range slot number takes
+    # the next free slot instead of being dropped (some models number every row 1).
     by_slot: dict[int, dict] = {}
+    unplaced: list[dict] = []
     for r in result.rows:
         try:
             k = int(r.get("slot"))
         except (TypeError, ValueError):
-            continue
+            k = 0
         if 1 <= k <= len(slots) and k not in by_slot:
             by_slot[k] = r
+        else:
+            unplaced.append(r)
+    free = [k for k in range(1, len(slots) + 1) if k not in by_slot]
+    for k, r in zip(free, unplaced, strict=False):
+        by_slot[k] = r
     out: list[Candidate] = []
     writer_model = model_for(job, "writer").model_id
     for k, r in sorted(by_slot.items()):

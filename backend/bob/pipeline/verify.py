@@ -208,6 +208,14 @@ def check_numbers(
 class _DedupIndex:
     hashes: dict[str, set[str]] = field(default_factory=dict)  # cell_id -> user-turn hashes of kept rows
     vecs: dict[str, list[Any]] = field(default_factory=dict)  # cell_id -> embeddings of kept user turns
+    texts: dict[str, list[str]] = field(
+        default_factory=dict
+    )  # cell_id -> kept user turns (same order as vecs)
+
+    def add(self, cell_id: str, text: str, vec: Any) -> None:
+        self.hashes.setdefault(cell_id, set()).add(turn_hash(text))
+        self.vecs.setdefault(cell_id, []).append(vec)
+        self.texts.setdefault(cell_id, []).append(text)
 
 
 @dataclass
@@ -242,14 +250,16 @@ async def register_kept(ctx: GenContext, rows: list[Row]) -> None:
     texts = ["\n\n".join(turns(r.messages, "user")) for r in kept]
     vecs = await _embed(texts)
     for r, t, v in zip(kept, texts, vecs, strict=True):
-        st.dedup.hashes.setdefault(r.cell_id, set()).add(turn_hash(t))
-        st.dedup.vecs.setdefault(r.cell_id, []).append(v)
+        st.dedup.add(r.cell_id, t, v)
 
 
 async def _embed(texts: list[str]) -> np.ndarray:
     from bob.pipeline.embed import embed  # A2
 
     return await asyncio.to_thread(embed, texts)
+
+
+DEDUP_WORDS_MIN = 85  # rapidfuzz token_set_ratio: share of wording for a near-duplicate
 
 
 def check_dedup(
@@ -270,7 +280,14 @@ def check_dedup(
     if others:
         sims = np.asarray(others) @ np.asarray(vec)
         best = float(sims.max())
-        if best > cos_max:
+        # Static embeddings put any two questions on one topic close together, so cosine alone rejects
+        # real, different questions. A near-duplicate must also share most of its wording.
+        other_texts = index.texts.get(cell_id, []) + pending.texts.get(cell_id, [])
+        close = [t for t, sim in zip(other_texts, sims.tolist(), strict=False) if sim > cos_max]
+        same_words = any(
+            fuzz.token_set_ratio(text, t, processor=utils.default_process) >= DEDUP_WORDS_MIN for t in close
+        )
+        if best > cos_max and same_words:
             return CheckResult(
                 name="dedup",
                 tier=1,
@@ -791,8 +808,7 @@ async def verify(cands: list[Candidate], ctx: GenContext) -> list[Row]:
             if outs[i].add(
                 check_dedup(c.cell_id, user_text(c), v, st.dedup, pending, s.dedup_cos), hard=True
             ):
-                pending.hashes.setdefault(c.cell_id, set()).add(turn_hash(user_text(c)))
-                pending.vecs.setdefault(c.cell_id, []).append(v)
+                pending.add(c.cell_id, user_text(c), v)
         vec_of = dict(zip(live, vecs, strict=True))
     else:
         vec_of = {}
@@ -828,8 +844,7 @@ async def verify(cands: list[Candidate], ctx: GenContext) -> list[Row]:
     # kept rows join the dedup index for later batches
     for i, row in enumerate(rows):
         if row.verdict == "kept" and i in vec_of:
-            st.dedup.hashes.setdefault(row.cell_id, set()).add(turn_hash(user_text(cands[i])))
-            st.dedup.vecs.setdefault(row.cell_id, []).append(vec_of[i])
+            st.dedup.add(row.cell_id, user_text(cands[i]), vec_of[i])
     return rows
 
 

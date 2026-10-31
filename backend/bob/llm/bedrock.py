@@ -28,6 +28,7 @@ from bob.llm.credentials import bedrock_runtime
 from bob.llm.registry import ModelCaps, caps_for
 
 TOOL_NAME = "emit_json"
+WRITER_TEMPERATURE = 1.0
 RETRIES = 3
 _RETRY_CODES = {
     "ThrottlingException",
@@ -178,6 +179,9 @@ class BedrockClient:
             "messages": msgs,
             "inferenceConfig": {"maxTokens": self.caps.max_tokens},
         }
+        if self.role == "writer" and self.caps.allows_temperature:
+            # the Writer must vary its rows; some models (Nova) default to a low temperature
+            req["inferenceConfig"]["temperature"] = WRITER_TEMPERATURE
         if sys_blocks:
             req["system"] = sys_blocks
         fields = self.caps.fields_for(self.role)
