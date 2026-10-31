@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
+from bob.api import me, results, sources
 from bob.api.auth import check_auth_config
 from bob.api.deps import settings
 from bob.api.errors import (
@@ -44,6 +45,8 @@ def create_app() -> FastAPI:
     app.add_exception_handler(RunnerBusy, runner_busy_handler)
     app.add_exception_handler(Exception, unexpected_error_handler)
     app.include_router(router, prefix="/api")
+    for extra in (me.router, sources.router, results.router):
+        app.include_router(extra, prefix="/api")
     return app
 
 
