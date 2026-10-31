@@ -34,7 +34,7 @@
 | 9 | `sweat` | 2 | Error state: confused, sweat drop | Done |
 | 10 | `sleep` | 2 | Long idle on the landing page: zzz | Done |
 
-## B. Art: Bob memes for the carousel
+## B. Art: Bob memes for the carousel (Done)
 
 - Drop images in `frontend/src/assets/memes/` (`.webp` preferred, under 150 KB each, about 600x600).
 - Caption = filename (`bob-reads-the-terms-of-service.webp` -> "Bob reads the terms of service"), or override in `frontend/src/assets/memes/captions.json`: `{ "file.webp": "Caption" }`.
