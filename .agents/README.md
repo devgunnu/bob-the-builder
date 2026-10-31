@@ -10,6 +10,12 @@ Everything a human or an AI agent needs to build Bob at Night Hack (2026-10-30).
    - **[CODEX_PROMPT.md](CODEX_PROMPT.md)**: the paste-ready prompt for Codex on the frontend.
 5. **[research/11-data-factory.md](research/11-data-factory.md)**: the v4 ideation record. Why templates were dropped, the mechanisms we considered, the user flow, the Jev / CDM roles and the cascade.
 
+Build state (read these to see what exists, not what is planned):
+- **Working branch: `gunbir/integration`.** It holds all merged work (A1 to A5, G1 to G4). Remote branches: `main`, `gunbir/integration`, `codex/infra-deployment` (the CodeBuild deploy branch).
+- **[WORKLOG_GUNBIR.md](WORKLOG_GUNBIR.md)**: G1 (API, auth, uploads, parsers) and G2 (Firecrawl, Composio, demo corpus): status, the full API route list, decisions, how to run, and a dated log.
+- **[CHANGES_REQUESTED.md](CHANGES_REQUESTED.md)**: open and done requests between owners.
+- **[quality/](quality/)**: acceptance checks, evaluation set and workstream tracker.
+
 ## TL;DR (v4.1)
 - **What Bob is:** a synthetic data factory. Goal + company material in, verified fine-tuning data out. Every row ships with its proof.
 - **Pitch:** "The LLM writes, and small decision models check every row. The strong model only looks at the rows where the checks disagree."
