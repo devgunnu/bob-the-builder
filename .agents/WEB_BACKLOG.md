@@ -38,7 +38,7 @@
 
 - Drop images in `frontend/src/assets/memes/` (`.webp` preferred, under 150 KB each, about 600x600).
 - Caption = filename (`bob-reads-the-terms-of-service.webp` -> "Bob reads the terms of service"), or override in `frontend/src/assets/memes/captions.json`: `{ "file.webp": "Caption" }`.
-- They cycle automatically in the workspace while Bob is waiting (`MemeCarousel.tsx`). No code changes needed.
+- They cycle automatically in the meme card that floats on the landing page (`MemeCarousel.tsx` inside `Landing.tsx`). No code changes needed. Memes stay on the landing page only (UX_NOTES rule 7).
 
 Ideas (data jokes, keep them kind):
 1. Bob reading a 400-page PDF at 3am with coffee
@@ -59,17 +59,17 @@ Ideas (data jokes, keep them kind):
 Each has an acceptance check.
 
 1. **Bob dives into the bar** (needs `dive` pose). During `blackout`, Bob jumps from the landing header into the bar before the morph. *Done when:* visible in the 2.1 s blackout, no layout jump.
-2. **Stage-aware Bob.** Map the AppShell pose to `lastStage` from `useJobStream` (`read` for fetch/triage/evidence, `type` for generate, `stamp` for verify, `nope` flash on each rejected `row` event, `carry` for export). *Done when:* Plan and Build pass the pose from the stream.
+2. **Stage-aware Bob (still frames only).** Swap the still AppShell / reading-screen pose by `lastStage` (`read` for fetch/triage/evidence, `type` for generate, `stamp` for verify, `carry` for export). No loops inside the app (UX_NOTES rule 7). *Done when:* Plan and Build pass the pose from the stream.
 3. **Whole-page drag and drop** on the landing page: dropping files shows a glowing drop zone and attaches them to the composer. *Done when:* files appear as chips in the composer.
 4. **Cubes assemble on verify.** A small cube pile next to the Kept counter grows as kept rows arrive; rejected rows show a cracked cube falling away. *Done when:* smooth at 30 rows/s.
-5. **Completion celebration.** Confetti made of mini data cubes and pixels on `done`, 1.5 s, reduced-motion aware.
+5. **Completion moment (subtle).** On `done`, a single soft fade-in of the report headline; no confetti inside the app (UX_NOTES rule 7).
 6. **Source scan line.** When a row is selected, a scan line sweeps the source block before the highlight appears.
 7. **Done:** real API client, SSE helper with replay de-duplication, all v4 screens.
 8. **Row history.** Build feed keeps the last 200 events; add a "load more" that pages `GET /jobs/{id}/rows`.
 9. **Heatgrid cell click** on Build: open a drawer listing that cell's rows (`GET /rows?cell_id=`).
 10. **Keyboard.** `j/k` moves through rows, `e` opens Export, `Esc` clears the selection.
 11. **Accessibility pass.** Focus rings on all controls, `aria-live` for Bob's chat messages, colour-contrast check on dim text.
-12. **Landing polish.** Optional sound toggle (soft blip on Enter), idle `sleep` pose after 60 s without input.
+12. **Landing polish.** Idle `sleep` pose after 60 s without input; new poses and memes go here, where the personality lives.
 
 ## D. Known gaps
 - Fonts load from Google Fonts; add local fallbacks if the venue wifi is bad.

@@ -292,9 +292,9 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
   };
 
   const rise = (i: number) => ({
-    initial: { opacity: 0, y: 20, filter: "blur(6px)" },
-    animate: { opacity: 1, y: 0, filter: "blur(0px)" },
-    transition: { duration: 0.55, delay: 0.25 + i * 0.08 },
+    initial: { opacity: 0 },
+    animate: { opacity: 1 },
+    transition: { duration: 0.3, delay: 0.15 + i * 0.05 },
   });
 
   const pickedApps = Object.values(connected).filter((c): c is Connected => !!c && c.picked.length > 0);

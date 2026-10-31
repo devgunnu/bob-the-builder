@@ -9,6 +9,7 @@
 4. **Smart defaults.** 1,000 rows, $10, 25 pages, openai-chat JSONL. Show them as one line the user can change.
 5. **Silence when healthy.** Provider status is a green dot; it only becomes a chip when something fails. Errors and fallbacks always show.
 6. **Never hide what matters:** errors, budget overruns, rejected-row reasons, cancel.
+7. **Personality lives on the landing page.** Memes, looping Bob animations, floating cards and the blackout are for `/` only. Inside the app, Bob is a still image (`<Bob still float={false} />`), and motion is limited to short fades, progress bars and the row-arrival flash.
 
 ## Screen by screen
 | Screen | Shows by default | Behind a click |

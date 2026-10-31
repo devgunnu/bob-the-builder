@@ -40,7 +40,7 @@ export default function JobList() {
         {jobs === null && !error && <Empty>Loading…</Empty>}
         {jobs?.length === 0 && (
           <Empty>
-            <Bob pose="wave" size={120} />
+            <Bob pose="idle" size={110} float={false} still />
             <p className="mt-2">No jobs yet. Start one from the home page.</p>
           </Empty>
         )}

@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import { motion, useMotionValue, useReducedMotion, useSpring, useTransform, type MotionValue } from "motion/react";
 import { CheckCircle2, FileText, Globe, XCircle } from "lucide-react";
 import { Bob } from "./Bob";
+import { MemeCarousel } from "./MemeCarousel";
 
 function DataCube({ size = 56, glow = false }: { size?: number; glow?: boolean }) {
   // Isometric cube in Bob's style: blue faces, a grid of light dots.
@@ -64,6 +65,14 @@ function Pixel({ c, s = 12 }: { c: string; s?: number }) {
   return <div className="rounded-[3px]" style={{ width: s, height: s, background: c }} />;
 }
 
+function MemeCard() {
+  return (
+    <div className="w-56 rounded-2xl border border-bob-navy/10 bg-white/95 p-3 shadow-[0_14px_40px_-18px_rgba(11,21,51,0.45)]">
+      <MemeCarousel compact />
+    </div>
+  );
+}
+
 interface FloaterSpec {
   x: string; // left %
   y: string; // top %
@@ -81,7 +90,7 @@ const FLOATERS: FloaterSpec[] = [
   { x: "70%", y: "24%", depth: 30, bob: 16, dur: 8, rot: 3, hideSm: true, node: <RowCard q="How do I stop a crawl at 50 pages?" a="Set limit: 50 on the crawl request." /> },
   { x: "5%", y: "58%", depth: 22, bob: 14, dur: 7.5, rot: -3, hideSm: true, node: <RowCard q="Is there a setting for webhook retries?" a="Our docs don't cover that. I'll hand you to a teammate." /> },
   { x: "14%", y: "36%", depth: 12, bob: 8, dur: 5.5, rot: -10, hideSm: true, node: <Chip icon={<FileText className="size-3.5 text-rose-500" />} label="Notion · Support FAQ" /> },
-  { x: "86%", y: "52%", depth: 34, bob: 12, dur: 6.5, rot: 12, hideSm: true, node: <DataCube size={46} /> },
+  { x: "77%", y: "40%", depth: 22, bob: 10, dur: 7.5, rot: 4, hideSm: true, node: <MemeCard /> },
   { x: "76%", y: "74%", depth: 20, bob: 10, dur: 7, rot: -4, hideSm: true, node: <RowCard ok={false} q="Can I export crawls as PDF?" a="Yes, use the bulk PDF export setting." /> },
   { x: "30%", y: "80%", depth: 16, bob: 9, dur: 6, rot: 6, node: <Badge label="train.jsonl" tone="yellow" /> },
   { x: "56%", y: "86%", depth: 26, bob: 11, dur: 6.8, rot: -8, node: <Badge label=".parquet" tone="mint" /> },
