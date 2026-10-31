@@ -3,12 +3,12 @@ import { motion, useReducedMotion } from "motion/react";
 import { ArrowUp, Paperclip, X } from "lucide-react";
 
 export const SUGGESTIONS = [
-  "Turn docs.convex.dev into a support assistant that never invents an API",
-  "Build 5,000 Q&A rows from my product manual, with sources",
-  "Make preference pairs that teach my model to say “that isn't documented”",
-  "Generate JSON extraction examples from these invoices",
-  "Train a small model to answer in our support team's style",
-  "Create multi-turn chats from our API reference, verified row by row",
+  "First-reply support assistant for docs.firecrawl.dev that hands off when the docs don't cover it",
+  "Q&A dataset from our Notion support FAQ and escalation policy, every answer with its source",
+  "Support replies for our API docs, in the voice of our help center",
+  "Teach a model to correct customers' wrong assumptions about our pricing",
+  "Onboarding questions from new developers, answered from our quickstart guide",
+  "Preference pairs where the good reply admits what the docs don't say",
 ];
 
 // Types a suggestion, holds it, erases it, moves to the next.
@@ -51,11 +51,31 @@ interface ComposerProps {
   intensity?: "calm" | "bright";
   locked?: string;
   disabled?: boolean;
+  /** Controlled mode: the parent owns the text (used by the Setup screen's goal field). */
+  value?: string;
+  onValueChange?: (v: string) => void;
+  placeholder?: string;
+  /** Keep text and files after submit (Setup keeps the goal while the job is created). */
+  keepOnSubmit?: boolean;
+  onFiles?: (files: File[]) => void;
   onSubmit: (text: string, files: File[]) => void;
 }
 
-export function Composer({ variant, intensity = "calm", locked, disabled, onSubmit }: ComposerProps) {
-  const [value, setValue] = useState("");
+export function Composer({
+  variant,
+  intensity = "calm",
+  locked,
+  disabled,
+  value: controlled,
+  onValueChange,
+  placeholder,
+  keepOnSubmit,
+  onFiles,
+  onSubmit,
+}: ComposerProps) {
+  const [own, setOwn] = useState("");
+  const value = controlled ?? own;
+  const setValue = (v: string) => (onValueChange ? onValueChange(v) : setOwn(v));
   const [files, setFiles] = useState<File[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -72,8 +92,10 @@ export function Composer({ variant, intensity = "calm", locked, disabled, onSubm
     const text = value.trim() || (variant === "landing" ? full : "");
     if (!text) return;
     onSubmit(text, files);
-    setValue("");
-    setFiles([]);
+    if (!keepOnSubmit) {
+      setValue("");
+      setFiles([]);
+    }
   };
 
   return (
@@ -117,7 +139,12 @@ export function Composer({ variant, intensity = "calm", locked, disabled, onSubm
           type="file"
           multiple
           hidden
-          onChange={(e) => setFiles((f) => [...f, ...Array.from(e.target.files ?? [])])}
+          onChange={(e) => {
+            const picked = Array.from(e.target.files ?? []);
+            e.target.value = "";
+            if (onFiles) onFiles(picked);
+            else setFiles((f) => [...f, ...picked]);
+          }}
         />
 
         <div className="relative min-w-0 flex-1">
@@ -138,7 +165,7 @@ export function Composer({ variant, intensity = "calm", locked, disabled, onSubm
                   }
                 }}
                 aria-label={variant === "landing" ? "Tell Bob what to build" : "Message Bob"}
-                placeholder={variant === "workspace" ? "Ask Bob to change the plan, add sources, or export…" : ""}
+                placeholder={placeholder ?? (variant === "workspace" ? "Describe the dataset you want…" : "")}
                 className={`w-full bg-transparent py-2 outline-none ${
                   variant === "landing" ? "text-[17px]" : "text-[15px]"
                 } ${dark ? "placeholder:text-dim" : ""}`}

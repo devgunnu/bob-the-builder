@@ -41,7 +41,7 @@ function RowCard({ q, a, ok = true }: { q: string; a: string; ok?: boolean }) {
           </span>
         ) : (
           <span className="flex items-center gap-1 text-rose-500">
-            <XCircle className="size-3.5" /> rejected: unsupported claim
+            <XCircle className="size-3.5" /> rejected: invented feature
           </span>
         )}
       </div>
@@ -77,15 +77,15 @@ interface FloaterSpec {
 
 const FLOATERS: FloaterSpec[] = [
   { x: "8%", y: "12%", depth: 26, bob: 12, dur: 6, rot: -6, node: <DataCube size={70} glow /> },
-  { x: "80%", y: "9%", depth: 18, bob: 10, dur: 7, rot: 8, hideSm: true, node: <Chip icon={<Globe className="size-3.5 text-bob-blue" />} label="docs.convex.dev" /> },
-  { x: "70%", y: "24%", depth: 30, bob: 16, dur: 8, rot: 3, hideSm: true, node: <RowCard q="Which tier fits 12 GB and a 7B model?" a="qlora_8bit. About 7 GB of frozen weights." /> },
-  { x: "5%", y: "58%", depth: 22, bob: 14, dur: 7.5, rot: -3, hideSm: true, node: <RowCard q="Does qlora_4bit work on Apple Silicon?" a="The docs don't say. I'd check before guessing." /> },
-  { x: "14%", y: "36%", depth: 12, bob: 8, dur: 5.5, rot: -10, hideSm: true, node: <Chip icon={<FileText className="size-3.5 text-rose-500" />} label="product-manual.pdf" /> },
+  { x: "80%", y: "9%", depth: 18, bob: 10, dur: 7, rot: 8, hideSm: true, node: <Chip icon={<Globe className="size-3.5 text-bob-blue" />} label="docs.firecrawl.dev" /> },
+  { x: "70%", y: "24%", depth: 30, bob: 16, dur: 8, rot: 3, hideSm: true, node: <RowCard q="How do I stop a crawl at 50 pages?" a="Set limit: 50 on the crawl request." /> },
+  { x: "5%", y: "58%", depth: 22, bob: 14, dur: 7.5, rot: -3, hideSm: true, node: <RowCard q="Is there a setting for webhook retries?" a="Our docs don't cover that. I'll hand you to a teammate." /> },
+  { x: "14%", y: "36%", depth: 12, bob: 8, dur: 5.5, rot: -10, hideSm: true, node: <Chip icon={<FileText className="size-3.5 text-rose-500" />} label="Notion · Support FAQ" /> },
   { x: "86%", y: "52%", depth: 34, bob: 12, dur: 6.5, rot: 12, hideSm: true, node: <DataCube size={46} /> },
-  { x: "76%", y: "74%", depth: 20, bob: 10, dur: 7, rot: -4, hideSm: true, node: <RowCard ok={false} q="How fast is full fine-tuning on a 3060?" a="About 4 hours per epoch." /> },
+  { x: "76%", y: "74%", depth: 20, bob: 10, dur: 7, rot: -4, hideSm: true, node: <RowCard ok={false} q="Can I export crawls as PDF?" a="Yes, use the bulk PDF export setting." /> },
   { x: "30%", y: "80%", depth: 16, bob: 9, dur: 6, rot: 6, node: <Badge label="train.jsonl" tone="yellow" /> },
   { x: "56%", y: "86%", depth: 26, bob: 11, dur: 6.8, rot: -8, node: <Badge label=".parquet" tone="mint" /> },
-  { x: "40%", y: "8%", depth: 14, bob: 8, dur: 5.8, rot: 4, hideSm: true, node: <Badge label="avro" tone="blue" /> },
+  { x: "40%", y: "8%", depth: 14, bob: 8, dur: 5.8, rot: 4, hideSm: true, node: <Badge label="openai-chat" tone="blue" /> },
   { x: "62%", y: "6%", depth: 10, bob: 6, dur: 5, node: <Pixel c="#63f0cf" s={14} /> },
   { x: "24%", y: "22%", depth: 28, bob: 10, dur: 6, node: <Pixel c="#1f5bff" s={10} /> },
   { x: "92%", y: "34%", depth: 12, bob: 7, dur: 5.4, node: <Pixel c="#ffc82e" s={12} /> },

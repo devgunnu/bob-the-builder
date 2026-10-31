@@ -7,7 +7,7 @@ Everything a human or an AI agent needs to build Bob at Night Hack (2026-10-30).
 3. **[AGENT_BRIEFS.md](AGENT_BRIEFS.md)**: the prompt for each coding agent (A1 to A4, G1 to G4).
 4. **[DECISIONS.md](DECISIONS.md)**: why each choice was made. v4 decisions are D18 to D24. Open questions are at the end.
 5. **[WEB_BACKLOG.md](WEB_BACKLOG.md)**: open art, meme and animation tasks for the frontend (for Codex).
-5. **[research/11-data-factory.md](research/11-data-factory.md)**: the v4 ideation record. Why templates were dropped, the mechanisms we considered, the user flow, the Jev / CDM roles and the cascade.
+6. **[research/11-data-factory.md](research/11-data-factory.md)**: the v4 ideation record. Why templates were dropped, the mechanisms we considered, the user flow, the Jev / CDM roles and the cascade.
 
 ## TL;DR (v4)
 - **What Bob is:** a synthetic data factory. Goal + company material in, verified fine-tuning data out. Every row ships with its proof.
