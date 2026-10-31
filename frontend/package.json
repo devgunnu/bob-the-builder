@@ -10,9 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@aws-amplify/ui-react": "^6.15.7",
     "@microsoft/fetch-event-source": "^2.0.1",
-    "aws-amplify": "^6.22.2",
     "lucide-react": "^1.65.0",
     "motion": "^14.9.0",
     "react": "^18.3.1",

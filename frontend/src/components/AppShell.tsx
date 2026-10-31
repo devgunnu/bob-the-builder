@@ -1,7 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router";
-import { Check, FileCheck2, Hammer, History, Link2, LogOut, Map, UserRound, X } from "lucide-react";
-import { authMode, signOut } from "../auth/session";
+import { Check, FileCheck2, Hammer, History, Link2, Map, UserRound, X } from "lucide-react";
 import { api } from "../api/client";
 import type { Health, JobStatus } from "../api/types";
 import { Bob, type BobPose } from "./Bob";
@@ -154,11 +153,6 @@ export function AppShell({ pose = "idle", title, step, status, hasReport, childr
           <Link to="/account" title="Account" aria-label="Account" className="grid size-8 place-items-center rounded-full text-dim hover:bg-white/5 hover:text-white">
             <UserRound className="size-4" />
           </Link>
-          {authMode() === "cognito" && (
-            <button onClick={() => signOut().then(() => window.location.assign("/"))} title="Sign out" aria-label="Sign out" className="grid size-8 place-items-center rounded-full text-dim hover:bg-white/5 hover:text-white">
-              <LogOut className="size-4" />
-            </button>
-          )}
         </div>
       </header>
       <main className="scroll-thin min-h-0 flex-1 overflow-y-auto">{children}</main>

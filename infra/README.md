@@ -8,7 +8,7 @@ Commit and push the infrastructure files to the GitHub branch first. From a chec
 
 The CodeBuild role has AdministratorAccess as requested. Anyone who can push to the selected branch can run deployment code with that access. Protect the branch and restrict repository access. CodeBuild uses the default VPC and its default subnets, with public IPs for workers. The job build uses Docker in privileged mode. CDK bootstrapping and AWS resources incur charges.
 
-The first deployment creates an empty Secrets Manager secret named `bob/keys`. Set its JSON value separately using Secrets Manager; do not commit keys. The stack creates an invite-only Cognito pool. The function URL is publicly reachable and relies on the application to verify Cognito tokens, as specified in the plan.
+The first deployment creates a Secrets Manager secret named `bob/keys`. Set its JSON value separately using Secrets Manager; do not commit keys. The application runs without sign-in: the publicly reachable API treats all visitors as the same user. Anyone with access can view and change shared data and run operations that incur provider charges. Existing Cognito resources remain in the stack but are not used for sign-in.
 
 ## Deployment notes
 
