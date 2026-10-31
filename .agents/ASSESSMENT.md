@@ -33,3 +33,25 @@
 
 ## Bottom line
 The core idea is good enough to impress technical founders. The current plan isn't, mainly because it shows data instead of behaviour and tries to do too much. The fixes are scope and storytelling, not a new idea.
+
+## Update after v3 and research 10: "Would a judge make it win?"
+
+**Not as it stands; finals if the live comparison works with real numbers.** Winning needs one moment that makes the room react.
+
+| Criterion | Score | Why |
+|---|---|---|
+| Usefulness | High | Trustworthy training data for small models is a real problem |
+| Technical depth | High | Architect writes generators + checker code, cheap Writer phrases rows, every row verified against source with decoys |
+| Novelty | Medium | Parts have prior art (AutoIF, RAFT, Persona Hub, synthetic-data-kit, distilabel); the combination is new |
+| Demo appeal | Low to medium | Datasets are invisible; charts land only with big numbers |
+| Works live in 5 hours | Risky | Generate, verify, fine-tune 3 to 4 models, score; one failure leaves only slides |
+
+What would make it win:
+1. A judge invents a fake feature live; the naive-data model describes it, the Bob-data model says it isn't in the docs and shows what they do say.
+2. A big honest number on questions the team didn't write (for example fabrication 70% -> 10%; 70% -> 55% won't carry it).
+3. Instantly showing a rejected row and why it failed.
+4. One sentence: "Bob turns your docs into training data that teaches small models not to make things up."
+
+What would sink it: showing the dataset before the behaviour, scoring on Bob's own questions, leading with cost, or a chart that looks pre-made.
+
+Recommendation: build the live hallucination test first; everything else after 8pm.
