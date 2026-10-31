@@ -121,7 +121,7 @@ function PlanGrid({ plan, setCells }: { plan: Plan; setCells: (fn: (c: Cell[]) =
                         aria-expanded={open === key}
                         aria-label={`${t}, ${caseLabel(cs)}: ${on.length ? `${sum} rows` : "off"}`}
                         className={`h-11 w-full rounded-xl text-[13px] transition ${
-                          !m.length ? "opacity-20" : on.length ? "bg-bob-blue/25 text-white hover:bg-bob-blue/40" : "border border-dashed border-white/10 text-dim/70 hover:text-white"
+                          !m.length ? "opacity-20" : on.length ? "bg-bob-blue/25 text-white hover:bg-bob-blue/40" : "border border-dashed border-white/10 text-dim hover:text-white"
                         } ${open === key ? "ring-2 ring-bob-sky" : ""}`}
                       >
                         {on.length ? <span className="font-medium tabular-nums">{sum}</span> : <span className="text-[11.5px]">off</span>}
