@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, CheckCircle2, Loader2, ShieldAlert, XCircle } from "lucide-react";
 import { api, ApiError } from "../api/client";
-import type { CostSummary, Job, RowEvent } from "../api/types";
+import type { CostSummary, Job, Row, RowEvent } from "../api/types";
 import { useJobStream } from "../api/useJobStream";
 import { AppShell } from "../components/AppShell";
 import { Bob, type BobPose } from "../components/Bob";
@@ -73,11 +73,52 @@ function topReasons(rows: RowEvent[]): [string, number][] {
   return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
 }
 
+function rowEvent(row: Row): RowEvent {
+  return {
+    id: row.id,
+    cell_id: row.cell_id,
+    verdict: row.verdict,
+    reject_reason: row.reject_reason,
+    case_type: row.case_type,
+    user_preview: row.messages.find((message) => message.role === "user")?.content ?? "",
+    confidence: row.confidence,
+    routed_to_judge: row.routed_to_judge,
+  };
+}
+
 function RowFeed({ rows, jobId, kept, rejected }: { rows: RowEvent[]; jobId: string; kept: number; rejected: number }) {
   const [filter, setFilter] = useState<"kept" | "rejected">("kept");
+  const [older, setOlder] = useState<RowEvent[]>([]);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasOlder, setHasOlder] = useState(true);
+  const [olderError, setOlderError] = useState<ApiError | null>(null);
   const nav = useNavigate();
-  const shown = rows.filter((r) => r.verdict === filter);
+  const recent = rows.filter((r) => r.verdict === filter);
+  const recentIds = new Set(rows.map((row) => row.id));
+  const shown = [...recent, ...older.filter((row) => !recentIds.has(row.id))];
   const reasons = filter === "rejected" ? topReasons(rows) : [];
+
+  useEffect(() => {
+    setOlder([]);
+    setHasOlder(true);
+    setOlderError(null);
+  }, [filter]);
+
+  const loadOlder = async () => {
+    setLoadingOlder(true);
+    setOlderError(null);
+    try {
+      const page = await api.rows(jobId, { verdict: filter, offset: recent.length + older.length, limit: 100 });
+      const known = new Set([...rows, ...older].map((row) => row.id));
+      const additions = page.rows.map(rowEvent).filter((row) => !known.has(row.id));
+      setOlder((current) => [...current, ...additions]);
+      setHasOlder(recent.length + older.length + page.rows.length < page.total);
+    } catch (error) {
+      setOlderError(error as ApiError);
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
   return (
     <section className="flex min-h-0 flex-col rounded-2xl bg-panel">
       <div className="flex gap-1 p-1.5" role="tablist">
@@ -109,31 +150,39 @@ function RowFeed({ rows, jobId, kept, rejected }: { rows: RowEvent[]; jobId: str
       {shown.length === 0 ? (
         <Empty>{filter === "kept" ? "Verified rows appear here." : "Nothing rejected yet."}</Empty>
       ) : (
-        <ul className="scroll-thin max-h-[560px] overflow-y-auto px-1.5 pb-1.5">
-          <AnimatePresence initial={false}>
-            {shown.map((r) => (
-              <motion.li
-                key={r.id}
-                initial={{ opacity: 0, y: -8, backgroundColor: r.verdict === "kept" ? "rgba(99,240,207,0.10)" : "rgba(251,113,133,0.12)" }}
-                animate={{ opacity: 1, y: 0, backgroundColor: "rgba(0,0,0,0)" }}
-                transition={{ duration: 0.45 }}
-                className="rounded-xl"
-              >
-                <button onClick={() => nav(`/jobs/${jobId}/rows/${r.id}`)} className="flex w-full items-start gap-2.5 rounded-xl px-2.5 py-2.5 text-left hover:bg-white/[0.04]">
-                  {r.verdict === "kept" ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-bob-mint" /> : <XCircle className="mt-0.5 size-4 shrink-0 text-rose-400" />}
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13.5px] text-white/90">{r.user_preview}</span>
-                    <span className="mt-0.5 block truncate text-[11.5px] text-dim">
-                      {caseLabel(r.case_type)}
-                      {r.routed_to_judge && " · checked by the judge"}
-                      {r.reject_reason && <span className="text-rose-300/85"> · {r.reject_reason}</span>}
+        <div className="scroll-thin max-h-[560px] overflow-y-auto px-1.5 pb-1.5">
+          <ul>
+            <AnimatePresence initial={false}>
+              {shown.map((r) => (
+                <motion.li
+                  key={r.id}
+                  initial={{ opacity: 0, y: -8, backgroundColor: r.verdict === "kept" ? "rgba(99,240,207,0.10)" : "rgba(251,113,133,0.12)" }}
+                  animate={{ opacity: 1, y: 0, backgroundColor: "rgba(0,0,0,0)" }}
+                  transition={{ duration: 0.45 }}
+                  className="rounded-xl"
+                >
+                  <button onClick={() => nav(`/jobs/${jobId}/rows/${r.id}`)} className="flex w-full items-start gap-2.5 rounded-xl px-2.5 py-2.5 text-left hover:bg-white/[0.04]">
+                    {r.verdict === "kept" ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-bob-mint" /> : <XCircle className="mt-0.5 size-4 shrink-0 text-rose-400" />}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13.5px] text-white/90">{r.user_preview}</span>
+                      <span className="mt-0.5 block truncate text-[11.5px] text-dim">
+                        {caseLabel(r.case_type)}
+                        {r.routed_to_judge && " · checked by the judge"}
+                        {r.reject_reason && <span className="text-rose-300/85"> · {r.reject_reason}</span>}
+                      </span>
                     </span>
-                  </span>
-                </button>
-              </motion.li>
-            ))}
-          </AnimatePresence>
-        </ul>
+                  </button>
+                </motion.li>
+              ))}
+            </AnimatePresence>
+          </ul>
+          {hasOlder && (
+            <button onClick={() => void loadOlder()} disabled={loadingOlder} className="mx-auto my-2 block rounded-lg px-3 py-1.5 text-[12px] text-dim hover:bg-white/[0.05] hover:text-white disabled:opacity-50">
+              {loadingOlder ? "Loading older rows…" : "Load older rows"}
+            </button>
+          )}
+          {olderError && <div className="px-2 pb-2"><ErrorBanner error={olderError} /></div>}
+        </div>
       )}
     </section>
   );
