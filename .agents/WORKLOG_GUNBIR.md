@@ -15,7 +15,7 @@ Source of truth stays `PLAN.md` and `CONTRACTS.md` (v4.1); this file records wha
 | 3b. Demo docs corpus (`demo/corpus/`, 25 pages) | G2 | Done |
 | 3c. Demo Notion wiki (6 fictional pages, in Notion + `demo/corpus/notion/`) | G2 | Done |
 | 4a. `/api/health` + container boot fix (`python-multipart`) | G1 | Done; container-style boot verified |
-| 4. API slice 2: every route in CONTRACTS §6, including `/uploads/presign` (P1) | G1 | Done (resync answers 501 until `sync.py`) |
+| 4. API slice 2: every route in CONTRACTS §6, including `/uploads/presign` (P1) | G1 | Done (resync answers 501 until A1 wires `sync.py` into the orchestrator) |
 | 4b. Cloud fix: `bob/aws/blobs.py` import crash; SigV4 presigned uploads | G1 (in A5 files, with Gunbir's OK) | Done |
 | 5. `connectors/sync.py` (P1, for resync) | G2 | Done; A1 wires `resync()` (logged) |
 | 5b. Jira / Confluence / Drive (P1) | G2 | Next |
@@ -40,10 +40,10 @@ Tests: `test_api_slice2.py` 21 and `test_sync.py` 3 added to the G1/G2 set. Full
 
 | Route | Notes |
 |---|---|
-| `GET /ping`, `GET /config/public` | Open (no sign-in). `/ping` is the Lambda readiness check |
+| `GET /ping`, `GET /config/public` | Open (no sign-in). `/ping` is the Lambda readiness check. `/config/public` also sends `signup` in cognito mode |
 | `GET /health` | One cheap real call per provider in parallel (15 s each); no fallbacks, no cache; keys redacted |
 | `GET /me`; `GET /me/aws/setup`, `GET /me/aws/template`, `PUT /me/aws`, `POST /me/aws/verify` | AWS connect flow (A1 `update_bedrock` / `verify_bedrock`) |
-| `PUT /me/models`, `POST /me/models/verify`, `GET /me/models/available` | Models per role; `available` lists Bedrock models + inference profiles through the caller's role (20 s cap) |
+| `PUT /me/models`, `POST /me/models/verify`, `GET /me/models/available` | Models per role (`api_keys` answer 501 until A1's P1 keys land); `available` lists Bedrock models + inference profiles through the caller's role (20 s cap) |
 | `POST /uploads` (6 MB), `POST /uploads/presign` (200 MB), `PUT /uploads/{id}/content` (local mode only) | Owner-scoped uploads; presign gives an S3 PUT in aws mode |
 | `GET /connectors`, `POST /connectors/{toolkit}/connect`, `GET .../status`, `GET .../browse` | Composio, per user (`bob-<id>`); redirect must be this app's origin |
 | `POST /sources/preview` | No job; 10 pages or 20 s, `capped` flag |
@@ -51,7 +51,7 @@ Tests: `test_api_slice2.py` 21 and `test_sync.py` 3 added to the G1/G2 set. Full
 | `GET /jobs/{id}/events` | SSE: `retry: 1000`, `: ping` every 15 s, replay from `Last-Event-ID`, closes after 840 s |
 | `GET /jobs/{id}/rows`, `GET /jobs/{id}/rows/{row_id}`, `POST /jobs/{id}/rows/{row_id}/spot-check` | Spot-check 409 while a worker runs (A1) |
 | `GET /presets`, `POST /jobs/{id}/export`, `GET /jobs/{id}/files/{name:path}` + `/url` | Preset and format validated against A4; downloads only for names in `Job.files` |
-| `POST /jobs/{id}/resync` | 501 until `connectors/sync.py` lands |
+| `POST /jobs/{id}/resync` | 501 until A1 wires `connectors/sync.py` (in, tested) |
 
 Errors everywhere: `{error, provider?, detail?}`; validation 422 `{error: "invalid request", detail}`; crashes 500 `{error: "internal error", detail}`.
 
