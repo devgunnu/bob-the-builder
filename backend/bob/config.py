@@ -5,6 +5,13 @@ which returns the env defaults with the job's non-None `JobSpec.options` (JobOpt
 
 Env var names map to fields: `BOB_X` -> `x` (for example `BOB_RUNS_DIR` -> `runs_dir`); other vars use the
 lower-case name (`KEEP_P` -> `keep_p`, `JEV_API_KEY` -> `jev_api_key`).
+
+Where values come from:
+- local (`BOB_ENV=local`, the default): process env, then `.env` and `../.env` (so it works from the repo
+  root and from `backend/`). Local dev only.
+- aws (`BOB_ENV=aws` in the process env): process env only. No `.env` file is read. Provider keys come only
+  from AWS Secrets Manager (`BOB_SECRET_ARN`, secret `bob/keys`), loaded into the process env by
+  `bob.aws.secrets.load_secret_into_env` before Settings is built. A missing ARN or a failed load raises.
 """
 
 from __future__ import annotations
@@ -30,7 +37,7 @@ def _f(env: str, default: Any = None, **kw: Any) -> Any:
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(".env", "../.env"),
+        env_file=None,  # set per mode in build_settings(): local only
         env_file_encoding="utf-8",
         extra="ignore",
         populate_by_name=True,
@@ -163,20 +170,45 @@ class EffectiveSettings(Settings):
 _OPTION_FIELDS = tuple(n for n in JobOptions.model_fields if n != "models")
 
 
+LOCAL_ENV_FILES = (".env", "../.env")  # local dev only; prod reads keys from Secrets Manager
+
+
+def process_env_mode() -> Literal["local", "aws"]:
+    """BOB_ENV from the process env only (never from a .env file)."""
+    return "aws" if os.environ.get("BOB_ENV", "local").strip().lower() == "aws" else "local"
+
+
 def _load_aws_secret() -> None:
-    """aws mode: load the bob/keys secret JSON into os.environ (A5 module, imported lazily)."""
+    """aws mode: load the bob/keys secret JSON into os.environ (A5 module, imported lazily). Fails loudly."""
+    arn = (os.environ.get("BOB_SECRET_ARN") or "").strip()
+    if not arn:
+        raise RuntimeError("BOB_ENV=aws needs BOB_SECRET_ARN (secret bob/keys); keys are not read from .env")
     try:
-        from bob.aws.secrets import load_secret_into_env  # type: ignore[attr-defined]
+        from bob.aws.secrets import load_secret_into_env  # type: ignore[import-not-found]
     except ImportError as e:
         raise RuntimeError("BOB_ENV=aws needs bob.aws.secrets.load_secret_into_env (A5)") from e
-    load_secret_into_env(os.environ.get("BOB_SECRET_ARN"))
+    try:
+        load_secret_into_env(arn)
+    except Exception as e:
+        raise RuntimeError(f"BOB_ENV=aws: loading secret {arn} failed: {e}") from e
+
+
+def build_settings(mode: Literal["local", "aws"]) -> Settings:
+    """Settings for a mode. aws: process env only (no .env file). local: process env + LOCAL_ENV_FILES."""
+    if mode == "aws":
+        return Settings(_env_file=None)  # type: ignore[call-arg]
+    s = Settings(_env_file=LOCAL_ENV_FILES)  # type: ignore[call-arg]
+    if s.env == "aws":
+        raise RuntimeError("BOB_ENV=aws must come from the process env, not from a .env file")
+    return s
 
 
 @lru_cache
 def get_settings() -> Settings:
-    if os.environ.get("BOB_ENV", "local").strip().lower() == "aws":
+    mode = process_env_mode()
+    if mode == "aws":
         _load_aws_secret()
-    return Settings()
+    return build_settings(mode)
 
 
 def settings_for(job: Job) -> EffectiveSettings:
