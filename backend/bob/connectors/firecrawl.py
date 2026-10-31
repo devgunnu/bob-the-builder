@@ -19,7 +19,7 @@ import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any
 
 from firecrawl import Firecrawl
 from firecrawl.v2.types import ScrapeOptions
@@ -31,7 +31,6 @@ if TYPE_CHECKING:
     from bob.core.models import Document, SourceSpec
 
 Progress = Callable[[int, int, str], Awaitable[None]]
-T = TypeVar("T")
 
 CRAWL_POLL_S = 2.0
 CRAWL_TIMEOUT_S = 15 * 60
@@ -110,7 +109,7 @@ def make_client() -> Firecrawl:
     return Firecrawl(api_key=api_key)
 
 
-async def _call(fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+async def _call[T](fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     """Run a blocking SDK call in a thread; wait and retry on rate limits."""
     for attempt in range(1, RATE_LIMIT_RETRIES + 1):
         try:
@@ -160,9 +159,7 @@ async def crawl(
         url,
         limit=limit,
         exclude_paths=EXCLUDE_PATHS,
-        scrape_options=ScrapeOptions(
-            formats=["markdown"], only_main_content=True, exclude_tags=EXCLUDE_TAGS
-        ),
+        scrape_options=ScrapeOptions(formats=["markdown"], only_main_content=True, exclude_tags=EXCLUDE_TAGS),
     )
     await progress(0, limit, f"crawl started: {url}")
 
@@ -184,9 +181,7 @@ async def crawl(
                 pages[doc_url] = page
                 await progress(len(pages), total, doc_url)
             if job.status == "completed":
-                return CrawlResult(
-                    started.id, list(pages.values()), job.credits_used, skipped
-                )
+                return CrawlResult(started.id, list(pages.values()), job.credits_used, skipped)
             if job.status in ("failed", "cancelled"):
                 raise CrawlError(f"crawl {job.status} for {url}")
             if loop.time() > deadline:
@@ -228,7 +223,5 @@ async def fetch(spec: SourceSpec, job_id: str, progress: Progress) -> list[Docum
 
     from bob.core import ledger
 
-    ledger.record(
-        job_id, "firecrawl", calls=max(result.credits_used, len(result.pages))
-    )
+    ledger.record(job_id, "firecrawl", calls=max(result.credits_used, len(result.pages)))
     return [to_document(page, crawl_id=result.crawl_id) for page in result.pages]

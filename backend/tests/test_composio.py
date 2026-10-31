@@ -21,9 +21,7 @@ if env.exists():
         if sep and key.strip() and key.strip() not in os.environ:
             os.environ[key.strip()] = value.strip()
 
-needs_key = pytest.mark.skipif(
-    not os.environ.get("COMPOSIO_API_KEY"), reason="needs COMPOSIO_API_KEY"
-)
+needs_key = pytest.mark.skipif(not os.environ.get("COMPOSIO_API_KEY"), reason="needs COMPOSIO_API_KEY")
 
 
 def test_composio_user_id_uses_prefix(monkeypatch):
@@ -139,11 +137,7 @@ async def test_auth_config_is_reused_and_read_only():
 @pytest.mark.asyncio
 async def test_notion_browse_and_fetch_markdown():
     connection_id = _local_notion_connection()
-    status = (
-        await cz.status("notion", connection_id, user_id="local")
-        if connection_id
-        else None
-    )
+    status = await cz.status("notion", connection_id, user_id="local") if connection_id else None
     if not status or not status["connected"]:
         pytest.skip("Notion connection for bob-local is not ACTIVE yet")
     pages = await cz.browse("notion", connection_id, "", user_id="local")

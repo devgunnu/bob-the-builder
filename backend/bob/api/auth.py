@@ -59,10 +59,7 @@ def check_auth_config() -> None:
 
 
 def cognito_issuer() -> str:
-    return (
-        f"https://cognito-idp.{settings.cognito_region}.amazonaws.com/"
-        f"{settings.cognito_user_pool_id}"
-    )
+    return f"https://cognito-idp.{settings.cognito_region}.amazonaws.com/{settings.cognito_user_pool_id}"
 
 
 @lru_cache(maxsize=1)

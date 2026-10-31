@@ -68,9 +68,7 @@ async def save_uploads(files: list[tuple[str, bytes]]) -> list[UploadedFile]:
         ext = PurePath(name).suffix.lower()
         if ext not in ALLOWED_EXTENSIONS:
             allowed = ", ".join(ALLOWED_EXTENSIONS)
-            raise UploadError(
-                f"{raw_name}: unsupported file type '{ext or 'none'}' (allowed: {allowed})"
-            )
+            raise UploadError(f"{raw_name}: unsupported file type '{ext or 'none'}' (allowed: {allowed})")
         if not data:
             raise UploadError(f"{raw_name}: file is empty")
         checked.append((name, data))
@@ -125,13 +123,9 @@ async def fetch(spec: SourceSpec, job_id: str, progress: Progress) -> list[Docum
     for index, upload_id in enumerate(spec.upload_ids, start=1):
         for name, data in await read_upload(upload_id):
             if PurePath(name).suffix.lower() in SEED_EXTENSIONS:
-                raise UploadError(
-                    f"{name}: seed files (.jsonl/.json) are not document sources"
-                )
+                raise UploadError(f"{name}: seed files (.jsonl/.json) are not document sources")
             try:
-                documents.append(
-                    await asyncio.to_thread(_document, upload_id, name, data)
-                )
+                documents.append(await asyncio.to_thread(_document, upload_id, name, data))
             except ParseError as exc:
                 raise UploadError(str(exc)) from exc
             await progress(index, total, name)

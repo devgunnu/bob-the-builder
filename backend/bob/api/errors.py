@@ -35,6 +35,17 @@ class ApiError(Exception):
         return body
 
 
+async def orchestrator_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    """PreconditionFailed (412) and JobRunning (409) carry `.status_code` and `.body`."""
+    status = int(getattr(exc, "status_code", 500))
+    body = getattr(exc, "body", None) or {"error": str(exc)}
+    return JSONResponse(body, status_code=status)
+
+
+async def runner_busy_handler(_: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse({"error": "too many running jobs", "detail": str(exc) or None}, status_code=429)
+
+
 def not_found(what: str = "not found") -> ApiError:
     return ApiError(404, what)
 
@@ -46,8 +57,5 @@ async def api_error_handler(_: Request, exc: Exception) -> JSONResponse:
 
 async def validation_error_handler(_: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, RequestValidationError)
-    detail = [
-        {"loc": list(err.get("loc", ())), "msg": err.get("msg", "")}
-        for err in exc.errors()
-    ]
+    detail = [{"loc": list(err.get("loc", ())), "msg": err.get("msg", "")} for err in exc.errors()]
     return JSONResponse({"error": "invalid request", "detail": detail}, status_code=422)

@@ -38,10 +38,7 @@ RAW_PAGE = (
     "Firecrawl billing is **credit-based**. Every API call that you make consumes credits.\n\n"
     "[Suggest edits](https://github.com/firecrawl/firecrawl-docs/edit/main/billing.mdx)"
     " [Raise issue](https://github.com/firecrawl/firecrawl-docs/issues/new)\n\n"
-    ' {"docsConfig":{"theme":"aspen","name":"Firecrawl Docs"'
-    + ',"x":1'
-    * 600
-    + "}}\n\n"
+    ' {"docsConfig":{"theme":"aspen","name":"Firecrawl Docs"' + ',"x":1' * 600 + "}}\n\n"
     "✕\n\n"
     "- \U0001f44b Hi! Power AI agents with clean web data!\n\n"
     "- I can help with search, scrape, MCP setup, or billing.\n"
@@ -64,11 +61,7 @@ def test_clean_markdown_strips_docs_chrome_and_keeps_content():
 
 
 def test_clean_markdown_is_noop_on_clean_pages():
-    page = (
-        (REPO_ROOT / "demo" / "smoke" / "rate-limits.md")
-        .read_text()
-        .split("---\n\n", 1)[1]
-    )
+    page = (REPO_ROOT / "demo" / "smoke" / "rate-limits.md").read_text().split("---\n\n", 1)[1]
     assert clean_markdown(page) == page.strip()
 
 
@@ -88,9 +81,7 @@ def test_page_url(raw, expected):
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(
-    not os.environ.get("FIRECRAWL_API_KEY"), reason="needs FIRECRAWL_API_KEY"
-)
+@pytest.mark.skipif(not os.environ.get("FIRECRAWL_API_KEY"), reason="needs FIRECRAWL_API_KEY")
 async def test_real_crawl_reports_progress_per_page():
     events: list[tuple[int, int, str]] = []
 
@@ -103,9 +94,7 @@ async def test_real_crawl_reports_progress_per_page():
     assert result.credits_used >= 1
     urls = [page.url for page in result.pages]
     assert len(urls) == len(set(urls))
-    assert all(
-        url.startswith("https://docs.firecrawl.dev/") and "#" not in url for url in urls
-    )
+    assert all(url.startswith("https://docs.firecrawl.dev/") and "#" not in url for url in urls)
     assert all(not url.endswith(".md") for url in urls)
     for page in result.pages:
         assert page.title

@@ -51,17 +51,11 @@ def parse_file(name: str, data: bytes) -> ParsedFile:
     parser = _PARSERS.get(ext)
     if parser is None:
         supported = ", ".join(SUPPORTED_EXTENSIONS)
-        raise ParseError(
-            f"{name}: unsupported file type '{ext or 'none'}' (supported: {supported})"
-        )
+        raise ParseError(f"{name}: unsupported file type '{ext or 'none'}' (supported: {supported})")
     parsed = parser(name, data)
     text = normalize_markdown(parsed.text)
     if not text:
-        hint = (
-            " (scanned PDFs without a text layer are not supported)"
-            if ext == ".pdf"
-            else ""
-        )
+        hint = " (scanned PDFs without a text layer are not supported)" if ext == ".pdf" else ""
         raise ParseError(f"{name}: no text found{hint}")
     return ParsedFile(title=parsed.title, text=text, metadata=parsed.metadata)
 
@@ -130,9 +124,7 @@ def _parse_markdown(name: str, data: bytes) -> ParsedFile:
                 metadata[key.strip()] = value.strip()
         text = text[match.end() :]
     heading = FIRST_HEADING.search(text)
-    title = metadata.get("title") or (
-        heading.group(1) if heading else _stem_title(name)
-    )
+    title = metadata.get("title") or (heading.group(1) if heading else _stem_title(name))
     return ParsedFile(title=_clip_title(title), text=text, metadata=metadata)
 
 
@@ -251,20 +243,14 @@ def _parse_csv(name: str, data: bytes) -> ParsedFile:
         dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t|")
     except csv.Error:
         dialect = csv.excel
-    rows = [
-        row
-        for row in csv.reader(io.StringIO(text), dialect)
-        if any(c.strip() for c in row)
-    ]
+    rows = [row for row in csv.reader(io.StringIO(text), dialect) if any(c.strip() for c in row)]
     if not rows:
         return ParsedFile(title=_stem_title(name), text="")
     header, records = rows[0], rows[1:]
     title = _clip_title(_stem_title(name))
     metadata = {"rows": str(len(records)), "columns": str(len(header))}
     if len(records) <= CSV_TABLE_MAX_ROWS and len(header) <= CSV_TABLE_MAX_COLS:
-        return ParsedFile(
-            title=title, text=_md_table(header, records), metadata=metadata
-        )
+        return ParsedFile(title=title, text=_md_table(header, records), metadata=metadata)
     sections = []
     for index, record in enumerate(records, start=1):
         label = _md_cell(record[0]) if record and record[0].strip() else f"Row {index}"
