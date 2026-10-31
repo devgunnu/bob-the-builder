@@ -9,7 +9,9 @@ class DataStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs):
         super().__init__(scope, construct_id, **kwargs)
         self.table = dynamodb.Table(self, "Table", table_name="bob", partition_key=dynamodb.Attribute(name="pk", type=dynamodb.AttributeType.STRING), sort_key=dynamodb.Attribute(name="sk", type=dynamodb.AttributeType.STRING), billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST, time_to_live_attribute="expires_at", removal_policy=RemovalPolicy.DESTROY)
-        self.data_bucket = s3.Bucket(self, "DataBucket", block_public_access=s3.BlockPublicAccess.BLOCK_ALL, enforce_ssl=True, removal_policy=RemovalPolicy.DESTROY, auto_delete_objects=True)
+        # CORS PUT: the browser uploads files over 6 MB straight to a presigned URL (POST /uploads/presign).
+        # Any origin is fine: each URL is signed for one key, type and size, and expires in 15 min.
+        self.data_bucket = s3.Bucket(self, "DataBucket", block_public_access=s3.BlockPublicAccess.BLOCK_ALL, enforce_ssl=True, removal_policy=RemovalPolicy.DESTROY, auto_delete_objects=True, cors=[s3.CorsRule(allowed_methods=[s3.HttpMethods.PUT], allowed_origins=["*"], allowed_headers=["Content-Type"], max_age=3000)])
         self.frontend_bucket = s3.Bucket(self, "FrontendBucket", block_public_access=s3.BlockPublicAccess.BLOCK_ALL, enforce_ssl=True, removal_policy=RemovalPolicy.DESTROY, auto_delete_objects=True)
         self.frontend_bucket.add_to_resource_policy(iam.PolicyStatement(actions=["s3:GetObject"], resources=[self.frontend_bucket.arn_for_objects("*")], principals=[iam.ServicePrincipal("cloudfront.amazonaws.com")], conditions={"ArnLike": {"AWS:SourceArn": f"arn:{self.partition}:cloudfront::{self.account}:distribution/*"}}))
         self.secret = secretsmanager.Secret(self, "Keys", secret_name="bob/keys", removal_policy=RemovalPolicy.DESTROY)

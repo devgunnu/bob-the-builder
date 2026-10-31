@@ -23,7 +23,6 @@ dependencies = [
     "markdownify",
     "tenacity",
     "boto3",
-    "pyjwt[crypto]",
     "python-multipart>=0.0.32",
 ]
 

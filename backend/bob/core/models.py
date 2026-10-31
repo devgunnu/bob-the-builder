@@ -153,7 +153,7 @@ class BedrockAccess(BaseModel):  # AWS access only; models are in ModelRoles
 
 
 class UserProfile(BaseModel):
-    id: str  # Cognito sub, or "local"
+    id: str  # "local": the one built-in user (no sign-in)
     email: str | None = None
     external_id: str  # uuid4, made once
     bedrock: BedrockAccess | None = None

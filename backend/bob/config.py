@@ -107,12 +107,6 @@ class Settings(BaseSettings):
     )
 
     # ---------- accounts and BYO AWS (section 14) ----------
-    auth: Literal["none", "cognito"] = _f("BOB_AUTH", "none")
-    cognito_region: str | None = _f("BOB_COGNITO_REGION")
-    cognito_user_pool_id: str | None = _f("BOB_COGNITO_USER_POOL_ID")
-    cognito_client_id: str | None = _f("BOB_COGNITO_CLIENT_ID")
-    cognito_domain: str | None = _f("BOB_COGNITO_DOMAIN")
-    signup: Literal["open", "invite"] = _f("BOB_SIGNUP", "invite")
     bedrock_auth: Literal["default", "assume_role"] = _f("BOB_BEDROCK_AUTH", "default")
     account_id: str | None = _f("BOB_ACCOUNT_ID")
     cred_refresh_s: int = _f("BOB_CRED_REFRESH_S", 300)
@@ -206,8 +200,17 @@ def build_settings(mode: Literal["local", "aws"]) -> Settings:
     return s
 
 
+def _drop_empty_aws_vars() -> None:
+    """`uvicorn --env-file` exports `AWS_PROFILE=` as an empty string, and boto3 then fails
+    every call with `ProfileNotFound: The config profile () could not be found`."""
+    for name in ("AWS_PROFILE", "AWS_DEFAULT_PROFILE"):
+        if os.environ.get(name) == "":
+            del os.environ[name]
+
+
 @lru_cache
 def get_settings() -> Settings:
+    _drop_empty_aws_vars()
     mode = process_env_mode()
     if mode == "aws":
         _load_aws_secret()
