@@ -221,6 +221,13 @@ Each entry: decision, why, what would change it.
 - **Priority:** P0 = configurable models on Bedrock (any model family) through Converse + registry + verify per role. P1 = `openai_compatible` with encrypted keys, model picker, per-job model override.
 - **Would change if:** Converse does not work for the default Claude models by T+1:00 (for example caching or JSON output fails). Then use the defaults only and keep other models P1.
 
+## D34. Jev through its direct API, not OpenRouter (v4.1 addendum)
+- **Decision:** `clients/jev.py` (A2) calls the Jev API directly with a Jev API console key. Config: `JEV_API_KEY`, `JEV_BASE_URL`, `JEV_MODEL`. `OPENROUTER_API_KEY` is not used by Jev. It stays only as an optional key for ScaleDown via OpenRouter (CONTRACTS section 5). The secret `bob/keys` holds `JEV_API_KEY`.
+- **Default:** `JEV_BASE_URL` is empty in `config.py` and `.env.example`. A2 confirms the base URL, the path, the auth header and the request shape at the first real call (T+0:20, D32), then sends the value to A1. `JEV_MODEL` keeps `typesafe/jev-1.13-20260917` until A2 confirms the model name form of the direct API.
+- **Why:** user decision on 2026-10-30. The team has a Jev console key. One less provider between Bob and Jev.
+- **Trade-off:** the base URL and shape are not known before the first call. A wrong guess is not allowed, so the value stays empty until A2 confirms it.
+- **Would change if:** the direct Jev API is not available to the team key by T+0:20. Then A2 uses the section 5 fallback chain and reports it.
+
 ## Open questions
 
 ### Research during the build (D32)
@@ -229,7 +236,7 @@ Each entry: decision, why, what would change it.
 | Bob hosting AWS account + region (old Q8) | A5 | T+0:00 | us-east-1 |
 | Default Bedrock model IDs / inference profiles (old Q1) | A1 | first Bedrock call (T+0:20) | `global.anthropic.claude-haiku-5-5`, `global.anthropic.claude-sonnet-5-5` |
 | Converse API with assumed-role `RefreshableCredentials` | A1 | T+1:00 | boto3 `bedrock-runtime` client rebuilt on refresh |
-| Jev request/response shape, model version (old Q2) | A2 | T+0:20 | CONTRACTS section 5 shape, `jev-1.13` |
+| Jev request/response shape, model version (old Q2) | A2 | T+0:20 | CONTRACTS section 5 shape, `jev-1.13`, direct Jev API (D34; base URL confirmed at first call) |
 | ScaleDown endpoint + Extract schema format (old Q3) | A2 | T+0:20 | `api.scaledown.xyz` |
 | Composio toolkits enabled + tool slugs (old Q4) | G2 | T+0:45 | Notion only |
 | Prices for Haiku, Sonnet, Jev, ScaleDown (old Q6) | A1 | T+1:30 | config table values |
