@@ -4,7 +4,7 @@ import { ArrowLeft, CheckCircle2, ExternalLink, Gavel, Loader2, ScanEye, XCircle
 import { api, ApiError } from "../api/client";
 import type { CheckResult, Job, Row, SpanRef } from "../api/types";
 import { AppShell } from "../components/AppShell";
-import { ErrorBanner, Panel, caseLabel, checkLabel, usd, useTitle } from "../components/ui";
+import { ErrorBanner, JobLoadError, Panel, caseLabel, checkLabel, usd, useTitle } from "../components/ui";
 
 
 
@@ -107,6 +107,7 @@ export default function RowInspector() {
   const [row, setRow] = useState<Row | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [job, setJob] = useState<Job | null>(null);
+  const [jobError, setJobError] = useState<ApiError | null>(null);
   const nav = useNavigate();
   useTitle("Row");
   useEffect(() => {
@@ -120,12 +121,21 @@ export default function RowInspector() {
   }, [id, rowId]);
   // The tracker shows where the job really is (a done job keeps Report open).
   useEffect(() => {
-    api.getJob(id!).then(setJob).catch(() => undefined);
+    setJobError(null);
+    api.getJob(id!).then(setJob).catch(setJobError);
   }, [id]);
 
   const kept = row?.verdict === "kept";
   const notInDocs = row?.checks.find((c) => c.name === "jev.not_in_docs");
   const passages = useMemo(() => groupSpans(row?.spans ?? []), [row]);
+
+  // An unknown job: no build to go back to, so only the error and the jobs list.
+  if (jobError)
+    return (
+      <AppShell pose="idle" step="build">
+        <JobLoadError error={jobError} />
+      </AppShell>
+    );
 
   return (
     <AppShell pose={row ? (kept ? "idea" : "think") : "think"} title={job?.spec.goal ?? "Row"} step="build" status={job?.status ?? null} hasReport={!!job?.report}>
