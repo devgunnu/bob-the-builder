@@ -30,6 +30,7 @@ from bob.core.models import (
     Candidate,
     CheckResult,
     Chunk,
+    DPOPair,
     Evidence,
     GenContext,
     Message,
@@ -808,3 +809,105 @@ async def check_flawed(cand: Candidate, ctx: GenContext) -> list[CheckResult]:
 def content_failures(checks: list[CheckResult]) -> list[str]:
     """Names of failed content checks (not format, dedup or a provider error)."""
     return [c.name for c in checks if not c.passed and c.name not in NON_CONTENT_CHECKS]
+
+
+# ---------------------------------------------------------------- DPO pairs (CONTRACTS section 4, D30)
+def dpo_draw(job_id: str, row_id: str) -> float:
+    """Stable uniform [0, 1) per row for the DPO_RATE sample."""
+    h = hashlib.sha256(f"dpo:{job_id}:{row_id}".encode()).digest()
+    return int.from_bytes(h[:8], "big") / 2**64
+
+
+def _pair_id(row_id: str, mode: str, other: str = "") -> str:
+    return hashlib.sha1(f"{mode}:{row_id}:{other}".encode()).hexdigest()[:12]
+
+
+def _prompt(row: Row) -> list[Message]:
+    msgs = [m for m in row.messages if m.role != "system"]
+    return msgs[:-1] if msgs and msgs[-1].role == "assistant" else msgs
+
+
+def _user_key(row: Row) -> tuple[str, str]:
+    return row.cell_id, turn_hash("\n\n".join(turns(row.messages, "user")))
+
+
+def natural_pairs(rows: list[Row]) -> list[DPOPair]:
+    """DPO_MODE=pair: in one cell, a kept reply + a reply rejected by a content check, same normalized user turn."""
+    rejected: dict[tuple[str, str], list[Row]] = {}
+    for r in rows:
+        if r.verdict == "rejected" and content_failures(r.checks):
+            rejected.setdefault(_user_key(r), []).append(r)
+    pairs: list[DPOPair] = []
+    for r in rows:
+        if r.verdict != "kept":
+            continue
+        for bad in rejected.get(_user_key(r), []):
+            pairs.append(
+                DPOPair(
+                    id=_pair_id(r.id, "natural", bad.id),
+                    row_id=r.id,
+                    mode="natural",
+                    prompt=_prompt(r),
+                    chosen=turns(r.messages, "assistant")[-1],
+                    rejected=turns(bad.messages, "assistant")[-1],
+                    rejection_reason=bad.reject_reason or "",
+                    rejected_checks=content_failures(bad.checks),
+                )
+            )
+    return pairs
+
+
+def synthesized_pair(row: Row, flawed: Candidate, checks: list[CheckResult]) -> DPOPair | None:
+    """Keep the pair only when a content check rejects the flawed twin (not format, dedup or a provider error)."""
+    fmt = next((c for c in checks if c.name == "format"), None)
+    if fmt is not None and not fmt.passed:
+        return None  # a malformed twin is no proof
+    failed = content_failures(checks)
+    if not failed:
+        return None  # the checks did not catch the flaw: drop the pair
+    first = next(c for c in checks if c.name == failed[0])
+    return DPOPair(
+        id=_pair_id(row.id, "synthesized"),
+        row_id=row.id,
+        mode="synthesized",
+        prompt=_prompt(row),
+        chosen=turns(row.messages, "assistant")[-1],
+        rejected=assistant_text(flawed),
+        rejection_reason=first.detail,
+        rejected_checks=failed,
+    )
+
+
+async def build_dpo_pairs(rows: list[Row], ctx: GenContext) -> list[DPOPair]:
+    """DPO pairs by DPO_MODE: synthesize (A3 generate_flawed + tier 1/2 proof) | pair (natural) | off."""
+    s = settings_for(ctx.job)
+    if s.dpo_mode == "off":
+        return []
+    if s.dpo_mode == "pair":
+        return natural_pairs(rows)
+
+    from bob.core import ledger  # A1
+    from bob.pipeline.generate import generate_flawed  # A3
+
+    job = ctx.job
+    sample = [r for r in rows if r.verdict == "kept" and dpo_draw(job.id, r.id) < s.dpo_rate]
+    sem = asyncio.Semaphore(max(1, s.writer_concurrency))
+    budget_hit = False
+
+    async def one(row: Row) -> DPOPair | None:
+        nonlocal budget_hit
+        async with sem:
+            if ledger.total_usd(job.id) >= 0.95 * job.spec.budget_usd:  # budget guard
+                if not budget_hit:
+                    budget_hit = True
+                    await _log(ctx, "warn", "dpo: budget guard reached; no more flawed twins")
+                return None
+            try:
+                flawed = await generate_flawed(row, ctx)
+            except Exception as e:  # noqa: BLE001 - one failed twin must not stop the job
+                await _log(ctx, "warn", f"dpo: generate_flawed failed on row {row.id}: {e}")
+                return None
+        return synthesized_pair(row, flawed, await check_flawed(flawed, ctx))
+
+    results = await asyncio.gather(*(one(r) for r in sample))
+    return [p for p in results if p is not None]
