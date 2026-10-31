@@ -10,48 +10,49 @@ Source of truth stays `PLAN.md` and `CONTRACTS.md` (v4.1); this file records wha
 | Part | Owner | State |
 |---|---|---|
 | 1. Smoke corpus (`demo/smoke/`: 5 pages + 10 seed Q&As) | G2 | Done |
-| 2. API slice 1 (parsers, uploads, auth, SSE, thin-path routes) | G1 | Done; runs on A1's real core |
+| 2. API slice 1 (parsers, uploads, who is calling, SSE, thin-path routes) | G1 | Done; runs on A1's real core; no sign-in now (every caller is `local`) |
 | 3. Firecrawl + Composio (Notion) connectors | G2 | Done; real crawl, real Notion browse + fetch |
 | 3b. Demo docs corpus (`demo/corpus/`, 25 pages) | G2 | Done |
 | 3c. Demo Notion wiki (6 fictional pages, in Notion + `demo/corpus/notion/`) | G2 | Done |
 | 4a. `/api/health` + container boot fix (`python-multipart`) | G1 | Done; container-style boot verified |
-| 4. API slice 2: every route in CONTRACTS §6, including `/uploads/presign` (P1) | G1 | Done (resync answers 501 until A1 wires `sync.py` into the orchestrator) |
+| 4. API slice 2: every route in CONTRACTS §6, including `/uploads/presign` (P1) | G1 | Done; resync works (no 501) |
 | 4b. Cloud fix: `bob/aws/blobs.py` import crash; SigV4 presigned uploads | G1 (in A5 files, with Gunbir's OK) | Done |
-| 5. `connectors/sync.py` (P1, for resync) | G2 | Done; A1 wires `resync()` (logged) |
+| 5. `connectors/sync.py` (P1, for resync) | G2 | Done (`refetch`, `refetch_diff`); orchestrator resync built by us 2026-10-31 |
 | 5b. Jira / Confluence / Drive (P1) | G2 | Next |
 | 6. Frontend wired to the real API | G1 + G3/G4 | Done: design review, contract fixes, both halves run together locally (2026-10-31 entry) |
-| 7. Full real job (needs AWS credentials + Jev / ScaleDown / Firecrawl / Composio keys and network) | all | Next: runbook in `HANDOFF_NEXT_CHAT.md` |
+| 7. Full real job (needs AWS credentials + Jev / ScaleDown / Firecrawl / Composio keys and network) | all | Blocked: the cloud proxy denies the provider hosts and the AWS key in the env is a placeholder. Runbook in `HANDOFF_NEXT_CHAT.md` |
+| 8. Login removed for the demo | G1 + G3 | Done (frontend by RETR0-OS `9ab76c0`, backend + docs by us `41c8f20`) |
+| 9. Frontend presigned upload for files over 5 MB | G3 | Done (`cd2b336`, checked in the browser with an 8 MB file) |
+| 10. Resync in the orchestrator + "Check the sources again" on Report | G2 (A1 files, with Gunbir's OK) | Done (`aed40d7`, `aae59be`) |
 
-Tests: `test_api_slice2.py` 21 and `test_sync.py` 3 added to the G1/G2 set. Full backend suite after the frontend merge: 157 passed on a machine without provider keys or network (the rest need them, plus one stale A1 test). Frontend `tsc -b && vite build` passes.
+Tests (2026-10-31): backend 162 passed, 24 failed + 3 errors, all of which need provider keys or hosts the cloud proxy denies. Every G1/G2 test passes except the live `/health` test. Frontend `npx tsc -b && npm run build` passes.
 
 ## Waiting on
 
 | From | What | Logged in |
 |---|---|---|
-| A1 | Stale test `test_create_job_429_and_missing_stage_error` (expects the G1 stage to be missing) | `CHANGES_REQUESTED.md` |
-| A1 | Optional: `_seeds` passes `owner_id=job.owner_id` to `read_upload` | `CHANGES_REQUESTED.md` |
-| A5 | Data bucket CORS: allow browser `PUT` (Content-Type, Content-Length) from `BOB_PUBLIC_URL` for presigned uploads | `CHANGES_REQUESTED.md` |
-| A5 | Point CodeBuild at `gunbir/integration` (or `main` after merging it); then `codex/infra-deployment` can be deleted | |
-| A1 | Wire `resync()` on `connectors/sync.py` (CONTRACTS §10) | `CHANGES_REQUESTED.md` |
-| A1 | `.env.example`: comment out the empty `AWS_PROFILE=` (it breaks local boto3) | `CHANGES_REQUESTED.md` |
-| A1 / team | Keys for a full local run: AWS credentials (Bedrock), `JEV_API_KEY`, `SCALEDOWN_API_KEY` (contract §9 still says `OPENROUTER_API_KEY`) | |
+| Gunbir (environment settings) | Provider keys (`JEV_API_KEY`, `SCALEDOWN_API_KEY`, `FIRECRAWL_API_KEY`, `COMPOSIO_API_KEY`), real AWS credentials, and the network allowlist: `api.typesafe.ai`, `api.scaledown.xyz`, `api.firecrawl.dev`, `backend.composio.dev`, `huggingface.co` | |
+| A2 / A4 | Confirm the ScaleDown extract schema form (needs a real ScaleDown call) | `CHANGES_REQUESTED.md` |
+| A5 | Point CodeBuild at `gunbir/integration` (or `main` after merging it), if still relevant | |
+
+Everything else in `CHANGES_REQUESTED.md` is done (see that file).
 
 ## API routes (G1, all under `/api`)
 
 | Route | Notes |
 |---|---|
-| `GET /ping`, `GET /config/public` | Open (no sign-in). `/ping` is the Lambda readiness check. `/config/public` also sends `signup` in cognito mode |
+| `GET /ping` | Lambda readiness check. No sign-in anywhere: every caller is the built-in user `local` |
 | `GET /health` | One cheap real call per provider in parallel (15 s each); no fallbacks, no cache; keys redacted |
 | `GET /me`; `GET /me/aws/setup`, `GET /me/aws/template`, `PUT /me/aws`, `POST /me/aws/verify` | AWS connect flow (A1 `update_bedrock` / `verify_bedrock`) |
 | `PUT /me/models`, `POST /me/models/verify`, `GET /me/models/available` | Models per role (`api_keys` answer 501 until A1's P1 keys land); `available` lists Bedrock models + inference profiles through the caller's role (20 s cap) |
-| `POST /uploads` (6 MB), `POST /uploads/presign` (200 MB), `PUT /uploads/{id}/content` (local mode only) | Owner-scoped uploads; presign gives an S3 PUT in aws mode |
+| `POST /uploads` (6 MB), `POST /uploads/presign` (200 MB), `PUT /uploads/{id}/content` (local mode only) | Owner-scoped uploads; presign gives an S3 PUT in aws mode. The frontend uses presign for files over 5 MB; the local PUT needs no auth header |
 | `GET /connectors`, `POST /connectors/{toolkit}/connect`, `GET .../status`, `GET .../browse` | Composio, per user (`bob-<id>`); redirect must be this app's origin |
 | `POST /sources/preview` | No job; 10 pages or 20 s, `capped` flag |
 | `POST /jobs` (412 / 429 from A1), `GET /jobs`, `GET /jobs/{id}`, `PUT /jobs/{id}/plan` (409 unless awaiting approval), `POST /jobs/{id}/cancel` | Every `/jobs/{id}/*` route 404s for another user's job |
 | `GET /jobs/{id}/events` | SSE: `retry: 1000`, `: ping` every 15 s, replay from `Last-Event-ID`, closes after 840 s |
 | `GET /jobs/{id}/rows`, `GET /jobs/{id}/rows/{row_id}`, `POST /jobs/{id}/rows/{row_id}/spot-check` | Spot-check 409 while a worker runs (A1) |
 | `GET /presets`, `POST /jobs/{id}/export`, `GET /jobs/{id}/files/{name:path}` + `/url` | Preset and format validated against A4; downloads only for names in `Job.files` |
-| `POST /jobs/{id}/resync` | 501 until A1 wires `connectors/sync.py` (in, tested) |
+| `POST /jobs/{id}/resync` | Works on a done job with a plan, 409 otherwise (429 at capacity). UI: "Check the sources again" on Report |
 
 Errors everywhere: `{error, provider?, detail?}`; validation 422 `{error: "invalid request", detail}`; crashes 500 `{error: "internal error", detail}`.
 
@@ -93,7 +94,7 @@ cd backend && uv sync --extra dev
 ```
 
 ```bash
-cd backend && ./run.sh   # API on :8000 (local mode, BOB_AUTH=none); the Vite dev server proxies /api
+cd backend && ./run.sh   # API on :8000 (local mode, no sign-in); the Vite dev server proxies /api
 ```
 
 ```bash
@@ -109,6 +110,15 @@ backend/.venv/bin/python demo/seed_notion.py                # re-seed the Notion
 Keys in `.env` (never committed): `FIRECRAWL_API_KEY`, `COMPOSIO_API_KEY`, `COMPOSIO_USER_PREFIX=bob-`; a full job also needs AWS credentials, `JEV_API_KEY`, `SCALEDOWN_API_KEY`.
 
 ## Log
+
+### 2026-10-31: sync refetch, browser run fixes, login removed, resync built (`gunbir/integration`)
+- `9ee77eb`: `sync.refetch(job)` re-fetches each source as the job owner, `sync.refetch_diff(job, old_docs)` returns the new docs, the diff and the stale doc ids. Tests: an offline upload refetch (no change, owner-scoped) plus real Notion and Firecrawl refetch tests that skip without keys.
+- Browser run (Playwright on the real local stack, scripts outside the repo): it reached `POST /jobs` -> 412 "connect AWS first", as expected. All five `/health` providers fail with exact errors (bedrock `NoCredentialsError`; jev, scaledown, firecrawl, composio "key not set") because the cloud env has no keys and the proxy denies the hosts. Test jobs had leaked into `backend/runs` before the conftest fix.
+- `9f43abf`, fixes from that run: missing Composio or Firecrawl keys answer 503 "not configured on this server" (was 400 and 502); Plan, Build and Report show only the error and a link to the jobs when a job can't load; the stream stops retrying on 4xx; the preview error stays in the Website tab; the job error sits next to Draft the plan with plain titles; the paid `/health` result survives reloads for 5 minutes (sessionStorage); the phone header chip reads "N down".
+- `cd2b336`: files over 5 MB upload through `POST /uploads/presign` and a direct PUT; smaller files go in multipart batches under 6 MB.
+- `41c8f20`: login removed on the backend too (Cognito check, `/config/public`, `BOB_AUTH`, `BOB_COGNITO_*`, `BOB_SIGNUP`, pyjwt); `config.py` drops an empty `AWS_PROFILE`; `.env.example` sources cleanly; data bucket CORS PUT for presigned uploads (`cdk synth` checked).
+- `aed40d7`: orchestrator resync (re-fetch, re-read, re-verify kept rows citing changed or removed docs, stale ones rejected, one gap round with reason "resync", report and export); `verify.py` uses `ctx.verify_state`; `_seeds` reads as the owner; conftest always uses a temp runs dir; the stale 429 test fixed; offline resync tests.
+- `aae59be`: "Check the sources again" link on Report; the stream closes only when the job is finished now; a re-checked row replaces its old feed entry.
 
 ### 2026-10-31: design review, frontend fixes against the real backend, sync.py (merged from `claude/bold-hopper-tsps3y`)
 - **Design review of Codex's work** (`6e3857d..e4fd613`) against UX_NOTES at 1440x900 and 390x844, with throwaway Playwright fixtures outside the repo. Fixed: wordmark overlapped the step tracker on phones; Report hero collapsed into a one-word column on phones; Plan's Start button is a sticky bottom bar on phones; Setup had two submit buttons; jargon (Jev triage, raw check names, case-type ids, job status ids); the Row screen always showed Build as the current step; heatgrid clipped its headers on phones; Amplify UI (520 KB) loaded even with auth `none` (now a lazy chunk, `auth/CognitoGate.tsx`).
@@ -191,7 +201,6 @@ Keys in `.env` (never committed): `FIRECRAWL_API_KEY`, `COMPOSIO_API_KEY`, `COMP
 - About 20 Firecrawl credits used. `.env` holds `FIRECRAWL_API_KEY`; it is gitignored and never staged.
 
 ## Next
-1. **Run one real job end to end** (runbook: `.agents/HANDOFF_NEXT_CHAT.md`): upload or URL, plan, edit, build, row, report, download. Fix every break in G-owned files; ask A1 through `CHANGES_REQUESTED.md` for the rest.
-2. A1 wires `resync()` on `connectors/sync.py` (the route returns 501 until then).
-3. Jira and Confluence in `composio.py` (P1), researched with real calls at first use.
-4. Frontend presigned upload for files over 6 MB (`POST /uploads/presign`; local `PUT /api/uploads/{id}/content` needs the Authorization header).
+1. Add the keys and allowlist the hosts, then run the runbook §3 end to end.
+2. Jira and Confluence in `composio.py`, researched with real calls at first use.
+3. Confirm the ScaleDown extract schema with a real call.

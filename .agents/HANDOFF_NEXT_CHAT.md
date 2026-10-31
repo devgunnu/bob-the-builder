@@ -5,9 +5,11 @@ Paste the prompt at the bottom (backend + frontend combined) into a new Claude C
 ## Where things stand (2026-10-31)
 - **One branch has everything:** `gunbir/integration` = Aaditya's core (A1 to A4) + infra (A5, `codex/infra-deployment`) + G1/G2 backend + the full frontend (former `claude/bob-web`, design-reviewed) + the integration fixes. Remote branches: `main`, `gunbir/integration`, `codex/infra-deployment`, plus the finished session branch `claude/bold-hopper-tsps3y`.
 - **Every route the frontend calls exists** (CONTRACTS §6), and `frontend/src/api/types.ts` matches `backend/bob/core/models.py` field for field (checked by script on 2026-10-31).
-- **Both halves ran together locally** (auth `none`). Real calls from the browser worked: `/me`, the AWS and models save + verify, uploads, `POST /jobs` (stopped by the AWS check, as it should), `/connectors`, `/health`. Each provider error reached the UI word for word.
-- **Not done yet: one full real job.** The last cloud session could not reach Jev, ScaleDown, Firecrawl, Composio or Hugging Face (network policy), and had no valid AWS keys. No call was ever stubbed.
-- **Tests:** backend 157 passed. The 25 failures + 3 errors all need provider keys or network, except one stale A1 assertion (`test_create_job_429_and_missing_stage_error`, logged). Frontend `npx tsc -b && npm run build` passes.
+- **No login (demo):** the sign-in is gone from the frontend and the backend. Every caller is the built-in user `local`; owner checks stay in code.
+- **Built on 2026-10-31:** resync (`POST /jobs/{id}/resync`, "Check the sources again" on Report), the frontend presigned upload for files over 5 MB, and the fixes from a real browser run.
+- **Browser run so far** (Playwright, real local stack): Account, Setup (uploads, URL preview, Apps tab), seeds and options all work; `POST /jobs` stops at 412 "connect AWS first", as it should without AWS. Each provider error reaches the UI word for word.
+- **Not done yet: one full real job.** The cloud session's proxy denies Jev, ScaleDown, Firecrawl, Composio and Hugging Face, no provider keys are set, and the AWS key in the env is a placeholder. No call was ever stubbed.
+- **Tests:** backend 162 passed, 24 failed + 3 errors, all of which need provider keys or blocked hosts. Every G1/G2 test passes except the live `/health` test. Frontend `npx tsc -b && npm run build` passes.
 - History: `.agents/WORKLOG_GUNBIR.md` (newest first). Open asks: `.agents/CHANGES_REQUESTED.md`.
 
 ## 1. What the run needs
@@ -20,9 +22,10 @@ Paste the prompt at the bottom (backend + frontend combined) into a new Claude C
 | `SCALEDOWN_API_KEY` | Extract, Summarize, Classify, Compress | |
 | `FIRECRAWL_API_KEY` | URL sources and preview | Free plan: 10 scrapes/min, 2 crawls/min |
 | `COMPOSIO_API_KEY` | Notion | The demo Notion connection already exists for user `bob-local` |
-| `BOB_AUTH=none` | Local sign-in off | |
 
-**Known trap:** `.env.example` has an empty `AWS_PROFILE=` line. `uvicorn --env-file` exports it as an empty string and every AWS call fails with `ProfileNotFound: The config profile () could not be found`. Comment it out (`# AWS_PROFILE=`) or set a real profile. Logged for A1.
+The AWS key in the cloud env must be a real key. The one there on 2026-10-31 is a placeholder: AWS rejects it with `InvalidClientTokenId`.
+
+**Fixed trap:** an empty `AWS_PROFILE=` used to break every local AWS call (`ProfileNotFound`). `.env.example` now comments it out and `config.py` drops an empty value.
 
 ### Network (only in a Claude cloud session)
 Allow these hosts in the environment's network settings (cloud environment menu in the title bar, then Edit):
@@ -66,6 +69,7 @@ Use the smoke corpus (`demo/smoke/`, 5 pages + `seeds.jsonl`) and keep it small:
 | 9 | Wait for done, open **Report** | Coverage, Quality, Spot-check (vote on 3 rows), Other formats | `report.ready`, `/spot-check` |
 | 10 | **Download dataset**, then export `full` as Parquet and download it | Files download and open | `/export`, `/files/{name}/url` |
 | 11 | Optional: one job with a Notion source (Apps tab, pick the 6 wiki pages) | Pages fetched and cited | `connectors/composio.py` |
+| 12 | On the done job's Report: **Check the sources again** | Build opens; with no change in the sources the job is back to done at once ("no changes in the sources") | `Orchestrator.resync`, `_resync_body`, `connectors/sync.py` |
 
 After the run, also check: `/jobs` lists the job; a reload of Build and Report replays from SSE; **Cancel** on a second job stops within 5 s.
 
@@ -75,10 +79,8 @@ Screenshot each screen at 1440x900 and 390x844 with Playwright (Chromium is pre-
 - Rows come from the store oldest first; the UI reads the newest end (`api.newestRows`).
 - `Row.spans` mixes whole chunks and extracted facts, both with document offsets. The row screen shows each chunk once and highlights the facts inside it.
 - The worker emits `stage.progress` only while reading; during the build it reports per cell (`cell.update`), so still Bob follows job status.
-- After `files.ready` the worker sends `job.status done`, then `done {files}`. The client closes the stream on either.
-- `/api/health` is paid: the UI shares one result per 5 minutes.
-- `POST /jobs/{id}/resync` returns 501 until A1 wires `connectors/sync.py` (in, tested).
-- Presigned uploads for files over 6 MB exist in the API (`POST /uploads/presign`); the UI still sends everything through `POST /uploads`.
+- After `files.ready` the worker sends `job.status done`, then `done {files}`. The client closes the stream on either, but only when `GET /jobs/{id}` says the job is finished now (a re-synced job replays an older `done`).
+- `/api/health` is paid: the UI shares one result per 5 minutes, also across reloads.
 
 ## 5. Rules
 - Real data only: no mocks or fake rows in the repo. If a real call fails, show the provider error.
@@ -97,7 +99,7 @@ I am Gunbir. In this chat you own **all of my parts at once**: G1 (API, auth, up
 
 ## Setup
 1. Work on branch `gunbir/integration`. It has everything: backend, frontend, infra. Pull it first.
-2. Create `.env` at the repo root from `.env.example`. If keys are already in the environment, write them from there; otherwise use the block below. Comment out the empty `AWS_PROFILE=` line (it breaks boto3 locally), and set `BOB_AUTH=none`. Confirm `git check-ignore .env` matches. NEVER stage, commit, print or echo a key value.
+2. Create `.env` at the repo root from `.env.example`. If keys are already in the environment, write them from there; otherwise use the block below. `.env.example` already comments out `AWS_PROFILE`. Confirm `git check-ignore .env` matches. NEVER stage, commit, print or echo a key value.
 
 <<<ENV
 (paste the contents of my local .env here, or leave empty if the keys are in the environment's secrets)
@@ -106,7 +108,7 @@ ENV>>>
 3. Backend: `cd backend && uv sync --extra dev`
 4. Frontend: `cd frontend && npm ci`
 5. Tests:
-   - Backend: `cd backend && set -a && . ../.env && set +a && .venv/bin/python -m pytest -q tests/`. There are 194 tests. Without AWS / Jev / ScaleDown keys, expect about 165 to 175 to pass. The rest need those keys, plus one known stale A1 test (`test_create_job_429_and_missing_stage_error`). All 72 G1/G2 tests (`test_api*.py`, `test_sse.py`, `test_parsers.py`, `test_firecrawl.py`, `test_composio.py`, `test_sync.py`) must pass when the Firecrawl and Composio keys are set.
+   - Backend: `cd backend && set -a && . ../.env && set +a && .venv/bin/python -m pytest -q tests/`. Without provider keys or network, 162 pass; the rest need keys or the allowlisted hosts. All 72 G1/G2 tests (`test_api*.py`, `test_sse.py`, `test_parsers.py`, `test_firecrawl.py`, `test_composio.py`, `test_sync.py`) must pass when the Firecrawl and Composio keys are set.
    - Frontend: `cd frontend && npx tsc -b && npm run build` must pass.
 6. If this is a Claude cloud session and a call is denied by the proxy (HTTP 403 on CONNECT), tell me the host. These must be allowed: `api.typesafe.ai`, `api.scaledown.xyz`, `api.firecrawl.dev`, `backend.composio.dev`, `huggingface.co`.
 
@@ -118,7 +120,7 @@ ENV>>>
 - `.agents/UX_NOTES.md` and `frontend/README.md`.
 
 ## State you inherit
-- **Backend:** every CONTRACTS §6 route exists (`backend/bob/api/`: `routes.py`, `account.py`, `sources.py`, `health.py`, `sse.py`, `auth.py`), including presigned uploads. Connectors are in `backend/bob/connectors/` (`parsers.py`, `upload.py`, `firecrawl.py`, `composio.py`, `sync.py`). `sync.py` already has `diff(old_docs, new_docs) -> {added, changed, removed}` and `stale_doc_ids()`, with tests on the smoke docs.
+- **Backend:** every CONTRACTS §6 route exists (`backend/bob/api/`: `routes.py`, `account.py`, `sources.py`, `health.py`, `sse.py`, `auth.py`), including presigned uploads. Connectors are in `backend/bob/connectors/` (`parsers.py`, `upload.py`, `firecrawl.py`, `composio.py`, `sync.py`). `sync.py` has `refetch`, `refetch_diff`, `diff` and `stale_doc_ids`; `Orchestrator.resync` uses them. There is no sign-in: every caller is the user `local`.
 - **Frontend:** `frontend/` (React 18, TS, Vite, Tailwind v4, Amplify v6 lazy-loaded) covers the landing page, Setup, Plan, Build, Row, Report, Account and Jobs. It was design-reviewed at 1440x900 and 390x844. `src/api/types.ts` matches `core/models.py` field for field. The client calls the relative `/api`, and Vite proxies it to :8000.
 - **Proven so far:** both halves run together locally. Real calls from the browser work up to `POST /jobs`, which stops at 412 without AWS. **No full job has run yet.**
 - **Composio:** the Notion auth config `bob-notion-read` is read-only (5 tools). Bob user `local` maps to Composio user `bob-local`, which has an ACTIVE Notion connection that sees the fictional demo wiki ("Bob Demo – Support Wiki (fictional)", 6 pages).
@@ -127,14 +129,10 @@ ENV>>>
 - **Known behaviors** (don't "fix" these): rows page oldest first, so the UI reads the newest end. `Row.spans` mixes chunks and facts with document offsets. The worker reports build progress per cell. `/api/health` is paid, so the UI checks it every 5 minutes.
 
 ## Tasks, in order
-1. **Finish `connectors/sync.py` (G2, P1, CONTRACTS §10).**
-   - Add a helper that re-fetches each `SourceSpec` of a job through `fetch_documents()` (with `user_id=job.owner_id`) and returns the new documents, ready for `diff()`.
-   - Add real-data tests: a real Notion re-fetch of the demo wiki (expect no changes), and a small real Firecrawl fetch of 1 to 2 pages.
-   - `Orchestrator.resync` is A1's code: don't edit it. Update the existing `CHANGES_REQUESTED.md` row for A1 with the exact signatures to call.
-2. **Health check.** Start `backend/run.sh` (API on :8000) and `cd frontend && npm run dev` (:5173).
+1. **Health check.** Start `backend/run.sh` (API on :8000) and `cd frontend && npm run dev` (:5173).
    - `curl -s localhost:5173/api/health` must show `ok` for bedrock, jev, scaledown, firecrawl and composio.
-   - If one isn't `ok`, tell me which one and its exact error, then do everything in task 3 that doesn't depend on it.
-3. **End-to-end in the browser** (Playwright; Chromium is pre-installed in cloud sessions). Follow the runbook's §3 checklist on the smoke corpus with 20 to 60 rows and a $1 to $2 budget:
+   - If one isn't `ok`, tell me which one and its exact error, then do everything in task 2 that doesn't depend on it.
+2. **End-to-end in the browser** (Playwright; Chromium is pre-installed in cloud sessions). Follow the runbook's §3 checklist on the smoke corpus with 20 to 60 rows and a $1 to $2 budget:
    - Account: AWS and models verified.
    - Setup: upload the smoke files, preview a URL, connect and browse Notion and pick the wiki pages.
    - Plan: draft, edit, start.
@@ -142,14 +140,12 @@ ENV>>>
    - Row: a kept row and a rejected row.
    - Report: spot-check 3 rows.
    - Download: the openai-chat JSONL, plus `full` as Parquet.
-   - Then: the job list, a reload replays the stream, and cancel stops a second job within 5 s.
+   - Then: "Check the sources again" on the done job, the job list, a reload replays the stream, and cancel stops a second job within 5 s.
    - **Without AWS credentials**, job creation stops at 412 "connect AWS first". That's expected; finish everything up to that point and report anything else that breaks.
    - Fix every bug in my files, backend or frontend, and re-run the step that broke.
    - For Aaditya's files, add a `CHANGES_REQUESTED.md` row with the exact error and the fix you propose.
-4. **Screenshots.** Send me every screen from the real run at 1440x900 and 390x844. Keep the Playwright scripts outside the repo.
-5. **If time remains (P1):**
-   - The frontend upload path for files over 6 MB through `POST /uploads/presign`. In local mode, `PUT /api/uploads/{id}/content` needs the Authorization header.
-   - Then Jira and Confluence in `composio.py`, researched with real calls at first use.
+3. **Screenshots.** Send me every screen from the real run at 1440x900 and 390x844. Keep the Playwright scripts outside the repo.
+4. **If time remains (P1):** Jira and Confluence in `composio.py`, researched with real calls at first use; confirm the ScaleDown extract schema with a real call.
 
 ## Rules
 - **Real calls only** (CONTRACTS §12): no mocks, no fake responses, no fake rows in the repo. If a real call fails, show the provider's error.
