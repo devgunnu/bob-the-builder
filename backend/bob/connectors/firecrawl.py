@@ -152,11 +152,14 @@ async def crawl(
     poll_s: float = CRAWL_POLL_S,
     timeout_s: float = CRAWL_TIMEOUT_S,
     prompt: str | None = None,
+    on_page: Callable[[CrawledPage], None] | None = None,
 ) -> CrawlResult:
     """Crawl `url` (at most `limit` pages). Calls progress(done, total, url) per new page.
 
     `prompt` (optional) is Firecrawl's natural-language crawl guidance, for example
     "only support pages: billing, limits, errors", which steers which links it follows.
+    `on_page` (optional) sees each kept page as it arrives (the preview route keeps
+    what arrived before its time cap).
     """
     client = client or make_client()
     started = await _call(
@@ -185,6 +188,8 @@ async def crawl(
                     skipped[doc_url] = reason or "skipped"
                     continue
                 pages[doc_url] = page
+                if on_page is not None:
+                    on_page(page)
                 await progress(len(pages), total, doc_url)
             if job.status == "completed":
                 return CrawlResult(started.id, list(pages.values()), job.credits_used, skipped)
@@ -257,3 +262,35 @@ async def fetch(spec: SourceSpec, job_id: str, progress: Progress) -> list[Docum
 
     ledger.record(job_id, "firecrawl", calls=max(result.credits_used, len(result.pages)))
     return [to_document(page, crawl_id=result.crawl_id) for page in result.pages]
+
+
+# ---------- preview (POST /sources/preview) ----------
+
+PREVIEW_MAX_PAGES = 10
+PREVIEW_TIMEOUT_S = 20.0
+
+
+async def preview(
+    url: str, limit: int, *, timeout_s: float = PREVIEW_TIMEOUT_S
+) -> tuple[list[CrawledPage], bool]:
+    """Crawl at most PREVIEW_MAX_PAGES pages for at most `timeout_s`.
+
+    Returns (pages, capped). `capped` is true when the crawl stopped early: the page cap
+    was lower than the job's crawl limit, or the time ran out (the crawl is then cancelled,
+    so nobody pays for pages nobody reads).
+    """
+    cap = max(1, min(limit, PREVIEW_MAX_PAGES))
+    seen: list[CrawledPage] = []
+
+    async def no_progress(_done: int, _total: int, _detail: str) -> None:
+        return None
+
+    try:
+        result = await asyncio.wait_for(
+            crawl(url, cap, no_progress, on_page=seen.append, poll_s=1.0), timeout=timeout_s
+        )
+    except TimeoutError:
+        return seen[:cap], True
+    except FirecrawlError as exc:
+        raise CrawlError(f"Firecrawl: {exc}") from exc
+    return result.pages[:cap], limit > cap
