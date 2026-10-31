@@ -1,180 +1,212 @@
-# Bob the Builder: Master Plan (v3: LLM proposes, Bob proves)
+# Bob the Builder: Master Plan (v4, the data factory)
 
-> **v3 (current direction, see `research/09`): an LLM is back in, in a controlled role.** A strong Architect model writes generators + verifier code + tests once per corpus; a cheap Writer model phrases each row with answer slots locked; Jev, ScaleDown and code verify every row. Fair 3-way eval: base vs naive-LLM-data vs Bob-data on human-written questions. Sections below marked v2 still describe the reading/verification layers, which v3 keeps. The zero-LLM rule (D13) is retired.
+> Build window: **4 hours** (T+0:00 to T+4:00). Two builders, four coding agents each. Result: a fully working product with **real calls only** (no mocks, no fake data).
+> Interfaces: `CONTRACTS.md`. Reasoning: `DECISIONS.md` (D18 to D24). Agent prompts: `AGENT_BRIEFS.md`. Ideation record: `research/11-data-factory.md`.
+> v4 retires templates, question programs, grammar banks and Architect-written generator code.
 
+## 1. Pitch
 
+**Bob is a synthetic data factory. You give it a goal and your company's material. It maps what the data must cover, generates candidates with a cheap LLM, checks every row with small decision models, and fills the gaps until the map is full. Every row ships with its proof.**
 
-> Night Hack @ Founders, Inc., 2026-10-30. Build 5:00 to 10:00pm, live demo, no slides.
-> v2 replaces v1 after the founder's challenge: Bob now **generates** new data with no LLM. See `research/05` for the evidence.
-> `CONTRACTS.md` holds the interfaces; `DECISIONS.md` holds the reasoning.
+Pitch line: *"The LLM writes, and small decision models check every row. The frontier model only looks at the rows where the checks disagree."*
 
-## 1. One-line pitch
-**Bob compiles your documents into a fact graph and programs brand-new training data from it, with zero LLM tokens. Small constrained models read and phrase; code computes the answers, so every row is correct by construction and traceable to its source.**
+## 2. The product, from the user's side
 
-Demo headline: *"5,000 new training rows, multi-hop questions, computed answers, reasoning traces and hard negatives, for about 40 cents (free on ScaleDown's starter tokens). The same job with Opus 5.5: about $70. LLM tokens used: 0."*
-
-## 2. How we got here
-
-| Idea | v1 | v2 |
+| Step | What the user does | What Bob does |
 |---|---|---|
-| Jev classifies chunks | Keep | **Keep**, plus ranking, verification and phrase decoding |
-| CDMs generate | Reworded (wrong term researched) | **Keep as intended.** CDM = ScaleDown **Constrained Decoding Models**: Extract builds the fact graph, Summarize writes constrained prose |
-| LLM writer | Core | **Removed.** Strictly zero-LLM (team decision). LLMs appear only as the *estimated* cost baseline; none is ever called |
+| 1. Goal | Types a goal, adds sources (website URL, file uploads, Notion / Confluence / Jira / Google Drive through Composio), sets row count and budget, optionally uploads seed examples | Fetches everything: Firecrawl for URLs, Composio for internal apps, parsers for files |
+| 2. Plan | Reviews the coverage map (topics x personas x case types x difficulty). Turns cells on or off, edits personas, clicks **Start** | Reads the material (chunk, filter, Jev triage, topics, ScaleDown Extract evidence), then the Planner proposes the map with notes ("Your seeds cover 4 of 14 topics") and a cost estimate |
+| 3. Build | Watches the map fill live; opens any row to see its source spans and checks; opens any rejected row to see why | Writer makes candidates per cell; the cascade verifies each one; only verified rows are kept |
+| 4. Fill gaps | Watches round 2 and 3 target thin and hard cells | Gap controller: empty cells, cells with high rejection rates, (stretch) cells where the base model fails |
+| 5. Result | Spot-checks a 50-row sample (thumbs up / down), downloads the dataset in a chosen preset and format | Data quality report: coverage, pass rate per check, reject reasons, judge agreement, Jev accuracy from the spot-check, cost vs frontier-only |
+| 6. Docs change (P1) | Clicks **Re-sync** | Re-fetches, diffs, re-verifies stale rows, regenerates only affected cells |
+
+Bob does **not** train models (D20).
 
 ## 3. Architecture
 
 ```
-  files | URL (Firecrawl)
-     │
-  1 INGEST + CHUNK        heading-aware, 300-500 tok, CSV/tables -> rows         $0
-  2 FREE FILTERS          heuristics + MinHash + embeddings + semantic dedup   $0
-  3 TRIAGE   (Jev)        useful / density / content type / boilerplate / PII / injection
-  4 EXTRACT  (ScaleDown)  typed facts with confidence + verbatim source spans
-  5 FACT GRAPH            entity resolution, unit normalization, cross-chunk merge,
-                          fact confidence = extract conf x span check x corroboration
-  6 COMPOSE  (code)       question programs over the graph; answers COMPUTED
-  7 REALIZE  (code + CDM) grammar bank -> many surface forms; Summarize for long answers
-  8 RANK     (Jev)        Choice: most natural candidate; Noul: fluent? answerable alone?
-  9 VERIFY                span check, Jev "supported?", dedup, decontam, PII
- 10 CERTIFY               re-verify 5% sample (spans, recompute, Jev) + human spot-checks -> pass rate ± CI
- 11 EXPORT                canonical rows -> presets -> JSONL/JSON/CSV/Parquet/Arrow/Avro/JSONB(.sql)
-                          + bob_manifest.json (+ optional ModelForge validate)
+ Sources ──────────────────────────────────────────────────────────────────────── Gunbir
+   URL ──► Firecrawl (crawl, markdown)
+   Notion / Confluence / Jira / Drive ──► Composio (OAuth, fetch) ──►  Document[]
+   Uploads ──► parsers (PDF, DOCX, MD, HTML, TXT, CSV)
 
-  ZERO-LLM RULE: only Jev, ScaleDown CDMs and static embeddings may be called.
-  One allowlisted call_model() gateway; the "LLM tokens: 0" meter reads its ledger.
+ Read ─────────────────────────────────────────────────────────────────────────── Aaditya
+   chunk (heading-aware) ► heuristic filter ► embed + dedup (model2vec)
+   ► Jev triage (useful / boilerplate / PII / injection)
+   ► topics (k-means + Writer names + ScaleDown Summarize briefs)
+   ► ScaleDown Extract ► EvidenceIndex (features, settings, limits, numbers, URLs + verbatim spans)
+
+ Plan
+   Planner (Sonnet 5.5) ► coverage map: topic x persona x case_type x difficulty ► user edits ► Start
+
+ Build loop (rounds 1..3)
+   Writer (Haiku 5.5, batched, prompt-cached, ScaleDown Compress on context) ► candidates
+   Verify:  Tier 1 code ► Tier 2 Jev + Extract name check ► route by confidence ► Tier 3 Sonnet judge (~5%)
+   Gap controller ► next round targets thin / hard cells
+   Rejected + kept replies to the same question ► DPO pairs
+
+ Ship
+   Report ► presets (OpenAI chat, ShareGPT, Alpaca, ModelForge, DPO, full) ► JSONL / JSON / CSV / Parquet
+   + bob_manifest.json + provenance.parquet
+
+ Web ──────────────────────────────────────────────────────────────────────────── Gunbir
+   FastAPI routes + SSE  ◄──►  React UI: Setup ► Plan ► Build (live map + feed) ► Row inspector ► Report
 ```
 
-### Question programs (stage 6)
-Each program takes graph nodes and returns `(question_slots, answer, reasoning_path, provenance)`.
+## 4. Where Jev and the CDMs work
 
-| Program | Example | Answer |
+| Stage | Jev | ScaleDown CDMs |
 |---|---|---|
-| lookup | What is the default timeout of the ingest service? | copied value |
-| inverse | Which service listens on port 8080? | graph query |
-| multi-hop | What is the timeout of the service that the API gateway depends on? | 2-hop join |
-| compare | Which is faster to restore, plan A or plan B, and by how much? | computed difference |
-| convert | How many minutes is the 5,400 s retention window? | computed |
-| aggregate | How many endpoints require admin scope? List them. | count + list |
-| superlative | Which region has the highest storage cost? | argmax |
-| procedure | How do I rotate an API key? / What comes after step 3? | ordered steps |
-| definition | What is a tenant? | definition span |
-| causal / conditional | What happens if the quota is exceeded? | effect span |
-| true/false + fix | True or false: X defaults to 10. | false, it's 30 (source) |
-| multi-turn | 3 to 5 turn walk across a graph neighbourhood | chat rows |
-| CoT | any multi-hop/compute program | step-by-step trace from the path |
-| explain-topic | Explain how billing works. | Summarize over the cluster's chunks |
-| summarization | Summarize this section in 2 sentences. | Summarize |
+| Read | Triage each chunk (4 questions per call) | **Extract** builds the evidence index with verbatim spans; **Summarize** writes topic briefs |
+| Generate | | **Compress** shrinks context; briefs replace full pages in Writer prompts |
+| Verify | One call per candidate, 5 questions (3 shared + 2 per case type, CONTRACTS §4); calibrated probability routes the row | **Extract** pulls every feature / setting / URL from the reply; code checks each against the evidence index (invented-feature detector) |
+| "Not in docs" rows | Confirms the top-5 retrieved chunks do not answer the question | |
+| Gap fill | Labels kept rows with their real topic, so coverage is measured, not assumed | |
+| Report | Spot-check measures Jev's real accuracy on this job | Spans power the row inspector |
 
-DPO for free: rejected = the same program run on a perturbed fact (sibling value, wrong hop, off-by-one step), with a `rejection_strategy` label.
+Real fallbacks (no stubs): Jev -> ScaleDown Classify -> Haiku JSON. Extract -> Haiku extraction with the same verbatim-span check. The UI shows a badge when a fallback is in use.
 
-### Why this impresses
-- New data: multi-hop and computed questions exist nowhere in the source.
-- Correct by construction: answers come from code and verbatim spans, not sampling.
-- Reasoning traces and verifiable answers (usable for RLVR later) with no LLM.
-- Full provenance per row: every fact links to the character span it came from.
+## 5. Team and agents
 
-## 4. Cost model (1M-token corpus, about 5,000 rows)
+### Aaditya: AI and backend logic (agents A1 to A4)
 
-| Step | Cost |
+| Agent | Scope | Owns |
+|---|---|---|
+| **A1 Core** | Shared models, config, store, events + SSE log, cost ledger, disk cache of real responses, Bedrock client, orchestrator state machine and build loop | `core/*`, `config.py`, `llm/bedrock.py`, `orchestrator.py`, `pyproject.toml` |
+| **A2 Read** | Jev client + fallback chain, ScaleDown client, chunking, filters, embeddings, dedup, triage, topics, evidence index, retriever | `clients/*`, `pipeline/chunk.py filters.py embed.py triage.py topics.py evidence.py` |
+| **A3 Plan + Write** | Planner (coverage map), target allocation, Writer prompts and generation for all 4 case types, gap controller | `pipeline/planner.py generate.py gaps.py`, `pipeline/prompts/planner.md writer*.md` |
+| **A4 Verify + Ship** | 3-tier cascade, judge prompt, DPO pairs, report, presets, formats, manifest; stretch: base-model probing | `pipeline/verify.py report.py probe.py`, `pipeline/prompts/judge.md`, `export/*` |
+
+### Gunbir: frontend and integrations (agents G1 to G4)
+
+| Agent | Scope | Owns |
+|---|---|---|
+| **G1 API + Files** | FastAPI app, all routes in CONTRACTS §6, SSE endpoint, uploads, file parsers, `fetch_documents()` dispatch, `/health` with real key checks | `api/*`, `connectors/__init__.py upload.py parsers.py` |
+| **G2 Connectors** | Firecrawl (crawl with live progress), Composio (OAuth connect, browse, fetch for Notion, Confluence, Jira, Google Drive), re-sync diff, demo corpus cache | `connectors/firecrawl.py composio.py sync.py`, `demo/*` |
+| **G3 UI: Setup + Plan** | Vite + React + TS shell, API client, `types.ts`, Setup screen (goal, sources, connectors, uploads, budget), Plan screen (editable coverage map, estimate, Start) | `frontend/src/api/*`, `frontend/src/screens/Setup*`, `Plan*`, app shell |
+| **G4 UI: Build + Results** | Live Build screen (map heatgrid, counters, cost meter, row feed, reject reasons), Row inspector (messages, checks, highlighted source spans), Report screen (charts, spot-check panel, export and downloads) | `frontend/src/screens/Build*`, `Row*`, `Report*`, `frontend/src/components/viz/*` |
+
+Gunbir's agents call the backend only through `Orchestrator` and `fetch_documents()`. Aaditya's agents never touch `api/`, `connectors/` or `frontend/`.
+
+## 6. Timeline (4 hours)
+
+### Before T+0:00 (both builders, 15 minutes, not part of the 4 hours)
+- [ ] Bedrock: AWS credentials work; one real call each to the Haiku 5.5 and Sonnet 5.5 model IDs (or inference profiles) in your region.
+- [ ] OpenRouter key: one real Jev Decisions call (`/api/alpha/decisions`).
+- [ ] ScaleDown key: one real Extract, Summarize, Classify and Compress call.
+- [ ] Firecrawl key: one real scrape of the demo docs.
+- [ ] Composio key: auth config for Notion (and Jira or Confluence if available); connect one real account.
+- [ ] Demo Notion workspace: 5 to 10 real internal-style pages (support FAQ, escalation policy, known issues) for the demo product.
+- [ ] Repo: `backend/` and `frontend/` folders, branches `aaditya/*` and `gunbir/*`, `.env` shared out of band (never committed).
+
+### T+0:00 to T+0:20: Lock
+| Agent | Task |
 |---|---|
-| Jev triage | about $0.04 |
-| ScaleDown Extract | about $0.03 |
-| ScaleDown Summarize (cluster explanations) | about $0.04 |
-| Jev ranking + verification | about $0.32 |
-| **Total** | **about $0.43** (about $0 under ScaleDown's 50M free tokens) |
-| LLM tokens | **0** |
-| Opus 5.5 generate + judge baseline | about $70 |
+| A1 | `core/models.py` exactly as CONTRACTS §2, `config.py`, `pyproject.toml`, empty `orchestrator.py` with the §7 signatures. Commit by T+0:15. |
+| A2 | Jev and ScaleDown clients with real calls; confirm the request and response shapes; write them into CONTRACTS §5 if they differ |
+| A3 | Bedrock call through `llm/bedrock.py` draft (with A1); first Writer prompt tested on the first real smoke page (G2 commits it by T+0:10) |
+| A4 | `prompts/judge.md`; export preset functions (pure code, no external calls) |
+| G1 | FastAPI skeleton, `/health` with real key checks, CORS, run script; then `POST /uploads`, `POST /jobs` and the MD parser by T+0:45 (needed for the thin path) |
+| G2 | First real Firecrawl page -> `demo/smoke/` by T+0:10, then 3 to 5 pages total -> `demo/smoke/*.md`; 10 real seed questions -> `demo/smoke/seeds.jsonl` |
+| G3 | Vite + React + TS scaffold, router, layout, `types.ts` from CONTRACTS §2 |
+| G4 | Design the Build screen layout and the heatgrid component against `types.ts` shapes |
 
-Prices: Jev $0.042/M input; ScaleDown $0.04/M input, output free. Verify at 5:00pm.
+### T+0:20 to T+1:30: Build the core
+| Agent | Deliverable by T+1:30 |
+|---|---|
+| A1 | **Thin real path by T+0:50** (CONTRACTS §12). Then: store with disk persistence, event bus + replay, ledger with frontier-only estimate, full build loop with rounds and budget guard |
+| A2 | chunk, filter, embed, dedup, triage, topics with briefs, EvidenceIndex + Retriever; all tested on `demo/smoke/` with real calls |
+| A3 | Planner returns a valid `Plan` for the smoke corpus; Writer works for all 4 case types; batched (5 per call), prompt caching on |
+| A4 | Tier 1 + tier 2 + routing + tier 3 judge working on real candidates; JSONL + Parquet export for `openai-chat` |
+| G1 | All routes in CONTRACTS §6 wired to the Orchestrator; SSE with `Last-Event-ID` replay; uploads + parsers for PDF, DOCX, MD, HTML, TXT, CSV |
+| G2 | Firecrawl connector with page progress; Composio connect + browse + fetch for Notion; full demo crawl cached to `demo/corpus/` |
+| G3 | Setup screen (goal, URL, uploads, connector buttons with real OAuth popup, row count, budget, seeds); Plan screen (map editor, notes, estimate, Start) |
+| G4 | Build screen on live SSE: heatgrid, counters, cost meter, row feed with reject reasons |
 
-## 5. Formats and presets
-Unchanged from v1 (see `CONTRACTS.md` §5): JSONL, JSON (plain array), CSV, Parquet, Arrow, Avro, Postgres JSONB `.sql`, optional HF Hub. Presets: ModelForge SFT / chat / DPO / QA fallback, OpenAI chat / DPO, Alpaca, ShareGPT, TRL, custom mapping, full (with provenance).
+### T+1:30: Checkpoint 1 (merge to `main`, 10 minutes)
+**Pass:** In the browser, a user enters a goal + the smoke URL, sees a real plan, clicks Start, watches real rows stream in with real verdicts, and downloads a real JSONL file. No hard-coded data anywhere.
+If it fails: all 8 agents fix the break first; nothing new starts.
 
-New: **ModelForge CoT preset** puts the reasoning trace + answer in `completion`. **RLVR preset** `{prompt, answer, verifier}` for trainers with verifiable rewards (not ModelForge yet).
+### T+1:40 to T+2:50: Complete the product
+| Agent | Deliverable by T+2:50 |
+|---|---|
+| A1 | Gap rounds wired end to end; cancel; resync orchestration (P1); concurrency tuned so 500 rows finish in under 10 minutes |
+| A2 | Real fallback chains tested (force a Jev failure, see ScaleDown Classify take over); triage and evidence quality pass on the full demo corpus |
+| A3 | Gap controller (deficit + rejection-rate boost); persona and difficulty diversity checked by reading 50 real rows; prompt fixes |
+| A4 | DPO pairs, full report, all presets and formats, manifest + provenance.parquet, stratified train/eval split |
+| G1 | Error handling: provider errors shown in the UI; `/sources/preview`; job list |
+| G2 | Composio Jira and Confluence (or Google Drive) fetch; `sync.py` diff for re-sync |
+| G3 | Job list / history page; Setup preview of fetched documents; polish |
+| G4 | Row inspector with source span highlights and check list; Report screen with spot-check panel and downloads |
 
-ModelForge rules still apply: canonical columns only, identical row types, one file per folder, token-length stats + cap.
+### T+2:50: Checkpoint 2 (merge, 10 minutes)
+**Pass:** All P0 items (section 8) work end to end on the real demo corpus (Firecrawl site + Notion through Composio): 500+ kept rows, one gap round, report complete, `openai-chat` and `full` downloads open. P1 items finish in T+3:00 to T+3:30.
 
-## 6. Standalone by design
-Python package `bob` (3.12+), never imports ModelForge; integrates through files + `bob_manifest.json` + optional `POST /api/datasets/validate`.
+### T+3:00 to T+3:30: Hardening and P1 / stretch
+- Everyone: fix bugs found at checkpoint 2.
+- If green: re-sync (P1), base-model probing (stretch, A4), UI polish (G3, G4).
 
-## 7. Stack and layout
-FastAPI + asyncio pipeline, Convex for live progress and file links, Vite + React UI, Photon Spectrum sidecar for iMessage. GPU box: embeddings, and fine-tuning the demo model with ModelForge.
+### T+3:30: Feature freeze
+### T+3:30 to T+4:00: Ship
+- Full real run of the demo on a fresh job; keep it as the backup job (and screen-record it).
+- README with setup and run steps; rehearse the demo 2 times.
 
-```
-bob/
-  cli.py api.py models.py
-  pipeline/ ingest.py chunk.py filters.py embed.py dedup.py
-            jev.py scaledown.py          # raw HTTP clients, disk cache, replay
-            graph.py                     # facts, entity resolution, units, confidence
-            programs/                    # one module per program family
-            realize/ grammar/*.yaml realizer.py inflect.py
-            rank.py verify.py certify.py cost.py models_allowlist.py
-  export/ presets.py formats.py jsonb_sql.py manifest.py modelforge.py
-web/  convex/  imessage/  demo/  tests/
-```
+## 7. Definition of done at T+3:30 (P0 + P1, all real)
+1. A new user can create a job from a public URL, an uploaded file, and a Notion page in one job.
+2. The plan screen shows a real coverage map from the Planner, and edits change the build.
+3. The build runs real Writer, Jev, ScaleDown and judge calls; rows stream live; rejected rows show their reason.
+4. At least one gap round runs and targets the thin cells.
+5. Every kept row opens to its source spans and its passed checks.
+6. The report shows coverage, pass rates, reject reasons, judge agreement, cost and frontier-only estimate, and the spot-check updates it.
+7. Exports: `openai-chat`, `sharegpt`, `modelforge-chat`, `dpo`, `full` in JSONL and Parquet, plus manifest and provenance.
+8. A real provider failure shows an error or a fallback badge in the UI, and the job does not hang.
 
-## 8. Build plan (5:00 to 10:00pm)
+## 8. Priorities and cut lines
+| Priority | Items |
+|---|---|
+| **P0** (must work at checkpoint 2) | URL + upload + Notion sources; read pipeline; plan + edit; build with 3-tier verification; at least one gap round; live UI; row inspector; report; JSONL + Parquet in `openai-chat` and `full` |
+| **P1** | Gap round 3; DPO pairs; job list page; Jira + Confluence / Drive; other presets and formats; re-sync; spot-check |
+| **Stretch** | Base-model probing; multi-turn rows |
 
-Roles (2 people: A+B and C+D):
-- **A: Read** (ingest, filters, Jev triage, ScaleDown Extract, fact graph)
-- **B: Compose** (question programs, DPO perturbation, CoT traces)
-- **C: Speak + ship** (grammar bank, realizer, Jev ranking, Summarize tasks, exporters, presets)
-- **D: Show** (UI, Convex, Photon, demo)
+Cut order if late: stretch -> re-sync -> extra Composio toolkits -> extra presets -> DPO. Never cut verification or the row inspector; they are the product.
 
-| Time | A | B | C | D |
-|---|---|---|---|---|
-| 5:00-5:20 | All: lock `CONTRACTS.md` (Fact + Program shapes), keys, one working Jev call + one ScaleDown Extract call | | | |
-| 5:20-6:20 | ingest, chunk, heuristics, dedup, Jev triage | programs on a **hand-written fixture graph**: lookup, inverse, definition, procedure, compare | grammar bank v1 (5+ phrasings per program), realizer, JSONL/Parquet/CSV + ModelForge presets | Convex + UI skeleton; Photon echo bot |
-| 6:20-7:20 | Extract schema, fact graph, entity resolution, span check | multi-hop, aggregate, convert, true/false, CoT, DPO perturbation | Jev ranking, Summarize explain-topic, Avro/JSONB/Arrow, manifest | live job view: stage stepper, graph stats, sample feed, cost meter |
-| 7:20-8:00 | **Integrate on real graph** | | | |
-| **8:00 CUT LINE 1** | Docs -> fact graph -> 5+ program types -> ranked rows -> JSONL + Parquet in the UI with provenance and cost. Drop Avro/JSONB/multi-turn/Photon if behind. | | | |
-| 8:00-9:00 | corroboration scores, "why dropped" | multi-turn walks, program coverage sampler | grammar bank v2 (20+ per program), certificate | **fact graph visual** (click a row, see its path light up), Opus cost comparison, iMessage reply; backup video |
-| **9:00 FREEZE** | Bug fixes only | | | |
-| 8:00-9:00 (B, in parallel) | | Kick off the **ModelForge fine-tune** on the GPU box with the first full dataset; build the 5-question base-vs-tuned eval | | |
-| 9:00-9:30 | Stretch: Jev phrase-decoding paraphraser; record base-vs-tuned clip for the backup video | | | |
-| 9:30-10:00 | Rehearse 3x, warm caches, README, push | | | |
+## 9. Demo (3 minutes)
+**Corpus:** a sponsor's public docs (default: Firecrawl's docs) via Firecrawl, plus 5 to 10 internal-style Notion pages (support FAQ, escalation policy, known issues) via Composio.
+**Goal:** "First-reply support assistant for Firecrawl. Use only our docs. If the docs do not cover it, say so and hand off to a human."
 
-Grammar bank tip: writing phrasings is the most parallel, lowest-risk work. Anyone who is blocked writes grammar.
+1. **0:00 Hook.** "Every synthetic data tool asks an LLM to write data and hopes it is right. Bob checks every row."
+2. **0:15 Sources.** Paste the docs URL; click Notion, pick the internal pages. Firecrawl pages and Notion pages count up.
+3. **0:40 Plan.** The coverage map appears: 12 topics x 4 personas x 4 case types x 3 difficulty levels. Read one note aloud ("No seed examples cover rate limits"). Turn off one topic. Start.
+4. **1:00 Build.** The map fills. Counters: generated, kept, rejected, judged. Click a rejected row: "Mentions 'webhook retries config', which is not in the docs." Click a kept "not in docs" row: Jev confirmed none of the top-5 passages answer it.
+5. **1:50 Gap round.** "Round 2: 9 thin cells, 3 hard cells." The empty cells fill.
+6. **2:20 Report.** Coverage 100%, pass rates per check, 5% sent to the judge, judge agreement, cost vs frontier-only (real numbers from the ledger; expect about $2 vs about $20).
+7. **2:40 Ship.** Download OpenAI-chat JSONL and the DPO file. "Every row has a provenance record."
+8. **2:55 Close.** "Your docs and internal wiki in, verified training data out."
 
-## 9. Demo: a real product, end to end (2 minutes)
+Keep the backup job from T+3:30 open in a second tab.
 
-**Corpus:** a real product's docs. Default proposal: **ModelForge itself** (its DEVELOPER_GUIDE, web Docs screen, code docstrings, CLI help, plus anything on its site). It's ours, it's real, and it closes the loop: Bob builds the data, ModelForge trains on it. If the team picks another product, keep the same script.
-
-**Before the demo (by 9:00):** run the full job once, fine-tune a small base model (0.5B to 1.5B, LoRA via ModelForge on the GPU box), and save a 5-question eval where the base model is wrong and the tuned model is right. Keep both models loaded.
-
-1. **0:00 Hook.** "Every synthetic data tool is an LLM rewriting your docs. Bob uses zero LLM tokens, and every answer is computed from the source."
-2. **0:15 Text it.** A judge texts Bob the product's docs URL. "On it."
-3. **0:30 Read.** UI: pages crawled, Jev drops boilerplate, Extract pulls facts with source spans, and the fact graph grows on screen.
-4. **0:55 Compose.** Rows stream in. Click a multi-hop row: its path lights up across three docs, with a computed answer and a reasoning trace. Show a DPO pair whose rejected answer swapped one value.
-5. **1:15 Ship.** One click: ModelForge JSONL + Parquet + Postgres JSONB. Meter: "$0.04 spent. Opus 5.5 estimate: $6.90. **LLM tokens: 0**" (read from the gateway ledger).
-6. **1:30 Prove it.** Side by side: base model vs model fine-tuned in ModelForge on Bob's data, asked a question about the product. Base model guesses; tuned model answers correctly and cites the step.
-7. **1:50 Phone buzzes.** "1,000 rows, link attached."
-8. **1:55 Close.** "Your docs, compiled into a model that knows your product. No LLM touched the data."
-
-Keep a pre-run job in a second tab and the backup video ready.
-
-## 10. Pre-event checklist
-- [ ] ScaleDown account (50M free tokens), key, one Extract + one Summarize call; confirm `api.scaledown.xyz` request shape and output caps.
-- [ ] Jev via OpenRouter Decisions API (`POST /api/alpha/decisions`) working; confirm model ID.
-- [ ] Photon line provisioned; Firecrawl key; Convex project.
-- [ ] `pip install` pyarrow fastavro orjson datasketch model2vec scikit-learn networkx pint inflect pymupdf python-docx trafilatura psycopg[binary] fastapi uvicorn httpx firecrawl convex.
-- [ ] Confirm the demo product (default: ModelForge) and gather its docs into `demo/` (crawl the site if it has one, plus repo docs).
-- [ ] ModelForge installed on the GPU box; a small base model (0.5B to 1.5B) downloaded; one throwaway LoRA run to confirm it trains in a few minutes.
+## 10. Cost model (estimate, about 1,000 kept rows; check prices before T+0:00)
+| Part | Calls | Estimate |
+|---|---|---|
+| Firecrawl crawl (25 pages) | 25 | credits |
+| Jev triage + ScaleDown Extract + Summarize | about 500 | about $0.05 |
+| Planner (Sonnet 5.5) | 2 to 3 | about $0.10 |
+| Writer (Haiku 5.5, about 1,700 candidates, 5 per call, cached prompts) | about 340 | about $0.40 |
+| Jev + Extract verification of 1,700 candidates | about 3,400 | about $0.15 |
+| Judge (Sonnet 5.5, about 5% routed + 2% audit) | about 120 | about $1.00 |
+| **Total** | | **about $1.70** |
+| Frontier-only (Sonnet writes and judges every candidate) | | about $20 |
 
 ## 11. Risks
-
 | Risk | Mitigation |
 |---|---|
-| Extraction errors (about 89.5% field accuracy in one test) | Keep high-confidence fields; span must appear verbatim; corroborate repeated facts; Jev checks fact vs span. |
-| Repetitive phrasing | Big grammar bank; Jev picks the best of many; paraphrase stretch; Summarize for long answers. |
-| Entity resolution merges wrong things | Conservative: exact-normalized match + high embedding similarity + same type. |
-| Corpus not fact-dense | Pick the demo corpus carefully; fall back to Summarize-based tasks for narrative text. |
-| ScaleDown or Jev access / request format | Working calls first; cache everything to disk; replay mode. Jev fallback: ScaleDown Classify (same Decisions API). |
-| Summarize output cap and weak query focus | Use it for topic explanations and summaries only; keep factual answers programmatic. |
-| Wifi / rate limits | Disk cache, replay, semaphores, hotspot, backup video. |
-| Scope creep | Freeze at 9:00; multi-turn, Avro, JSONB, Photon, fine-tune loop are toggles. |
-
-## 12. Prize targets
-1. **Anthropic top 3**: novelty ("zero-LLM data generation") plus the team building it with Claude Code. The pipeline uses no Claude (or any LLM) by design; Claude Code is the team's build tool.
-2. **Photon iMessage** ($1k): text a URL, get a dataset.
-3. Name Firecrawl, Convex, ScaleDown, TypeSafe in the demo.
+| A key or endpoint fails at T+0:00 | Pre-start checklist; real fallback chains; `/health` shows each provider's state |
+| Jev request shape differs from research | A2 confirms it in the first 20 minutes and updates CONTRACTS §5 |
+| Bedrock model ID or region not enabled | Check before T+0:00; use the cross-region inference profile |
+| Bedrock throttling | Semaphores, backoff, batching 5 candidates per call, prompt caching |
+| Rows look alike | Persona and difficulty axes; batched generation asks for 5 different rows; dedup; A3 reads 50 real rows at T+2:00 |
+| Composio OAuth friction in the demo | Connect the demo account before the demo; keep the connected account id in `.env` |
+| Firecrawl slow | Crawl cap 25; the demo corpus crawl is cached by T+1:30 (real data, cached) |
+| Integration breaks at checkpoints | Contracts locked at T+0:20; one owner per file; thin real path by T+0:50 |
+| Scope | Cut lines in section 8; freeze at T+3:30 |
