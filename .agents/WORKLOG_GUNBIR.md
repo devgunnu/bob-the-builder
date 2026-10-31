@@ -1,7 +1,7 @@
 # Gunbir work log (G1 API + Files, G2 Connectors)
 
 Running log of Gunbir's backend work. Newest entries at the top of the log.
-Frontend (G3, G4) is built in a separate session on branch `claude/bob-web`.
+Frontend (G3, G4) lives in `frontend/` on this branch (the former `claude/bob-web`).
 **Working branch from 2026-10-31: `gunbir/integration`** = `main` + Aaditya's former `a1-core`, `a2-read`, `a3-plan-write`, `a4-verify-ship` + former `claude/bob-web` + `codex/infra-deployment` + our former `gunbir/g1-api` and `gunbir/g2-connectors`. Merged branches were deleted on GitHub except `codex/infra-deployment` (Aaditya's CodeBuild deploys from it). Remote branches left: `main`, `gunbir/integration`, `codex/infra-deployment`.
 Source of truth stays `PLAN.md` and `CONTRACTS.md` (v4.1); this file records what is built, what is decided, and what is waiting on whom.
 
@@ -16,8 +16,8 @@ Source of truth stays `PLAN.md` and `CONTRACTS.md` (v4.1); this file records wha
 | 3c. Demo Notion wiki (6 fictional pages) | G2 | `gunbir/integration` | Done: seeded in Notion, cached to `demo/corpus/notion/` |
 | 4a. `/api/health` + container boot fix (`python-multipart`) | G1 | `gunbir/integration` | Done; container-style boot verified |
 | 4. API slice 2 (`/me/aws*`, `/me/models*`, `/connectors*`, preview, spot-check, export, files + `/url`, presets, resync 501) | G1 | `gunbir/integration` | Done: all contract routes, including `/uploads/presign` (P1) |
-| 5. Jira / Confluence, `sync.py` (P1; orchestrator resync needs `sync.py`) | G2 | | Later |
-| 6. Integration with the frontend | G1 + G3/G4 | | After 4 |
+| 5. Jira / Confluence, `sync.py` (P1; orchestrator resync needs `sync.py`) | G2 | `gunbir/integration` | `sync.py` done (A1 wires resync); Jira / Confluence later |
+| 6. Integration with the frontend | G1 + G3/G4 | `gunbir/integration` | Merged, contract mismatches fixed, local stack runs together; full real job not run yet (see Next) |
 
 ## Waiting on
 
@@ -79,6 +79,14 @@ cd backend && PYTHONPATH=. ../.venv/bin/python -m pytest -q tests/
 API (works once A1 core lands): `backend/run.sh` serves on `:8000`; the Vite dev server proxies `/api`.
 
 ## Log
+
+### 2026-10-31: design review, frontend fixes against the real backend, sync.py (merged from `claude/bold-hopper-tsps3y`)
+- **Design review of Codex's work** (`6e3857d..e4fd613`) against UX_NOTES at 1440x900 and 390x844, with throwaway Playwright fixtures outside the repo. Fixed: wordmark overlapped the step tracker on phones; Report hero collapsed into a one-word column on phones; Plan's Start button is a sticky bottom bar on phones; Setup had two submit buttons; jargon (Jev triage, raw check names, case-type ids, job status ids); the Row screen always showed Build as the current step; heatgrid clipped its headers on phones; Amplify UI (520 KB) loaded even with auth `none` (now a lazy chunk, `auth/CognitoGate.tsx`).
+- **Frontend vs the real backend:** new model fields in `types.ts`; the final `done` event; rows page oldest first, so "Load older rows" and the cell drawer now read from the newest end (`api.newestRows`); source passages show once with the extracted facts highlighted inside them (spans carry document offsets; the old slice landed mid-word); still Bob follows job status (the worker reports per cell, not per stage); local-mode Account (default AWS chain, no role to deploy); missing `BOB_ACCOUNT_ID` shows a clear note; plain 409 messages; Report labels check names.
+- **Cost fix:** every screen called `/api/health` (one paid call per provider) on mount and every 60 s. Now one shared result, at most every 5 minutes, only while visible; the red chip opens the exact errors on tap.
+- **P1:** `connectors/sync.py` (`diff`, `stale_doc_ids`, 3 tests on smoke docs); self sign-up switch (`signup` in `/config/public`, sign-up tab only when open); Bedrock model picker in the Models panel (suggestions from `/me/models/available`).
+- **Merge note:** that branch had its own API slice 2 written in parallel (`api/me.py`, `api/results.py`). This branch's version (`account.py`, `sources.py`, `routes.py`) was kept; the duplicates were dropped, and the frontend was adapted to its response shapes.
+- **First local run of both halves together** (`backend/run.sh` + `npm run dev`, auth `none`): `/me`, `/me/aws/setup`, `PUT /me/aws`, `/me/aws/verify`, `PUT /me/models`, `/me/models/verify`, `/uploads` (3 smoke files), `POST /jobs` (412 with the real reason), `/connectors`, `/health` all answered from the real code, and each provider error reached the UI word for word. Found: the empty `AWS_PROFILE=` in `.env.example` breaks boto3 locally (logged for A1). The run stopped there: the cloud session's network policy denied `api.typesafe.ai`, `api.scaledown.xyz`, `api.firecrawl.dev`, `backend.composio.dev`, `huggingface.co`, and its AWS keys were invalid. No call was stubbed.
 
 ### 2026-10-31: branch cleanup, presigned uploads, S3 import fix (`gunbir/integration`, `0d5eeb9`)
 - Merged 2 new `codex/infra-deployment` commits (CodeBuild credential reuse, manual starts); pushed `gunbir/integration`; deleted `aaditya/a1-core`, `a2-read`, `a3-plan-write`, `a4-verify-ship` and `claude/bob-web` on GitHub after checking each is fully contained. Kept `codex/infra-deployment` (Aaditya's CodeBuild deploys from it).
@@ -148,6 +156,7 @@ API (works once A1 core lands): `backend/run.sh` serves on `:8000`; the Vite dev
 - About 20 Firecrawl credits used. `.env` holds `FIRECRAWL_API_KEY`; it is gitignored and never staged.
 
 ## Next
-1. `connectors/sync.py` (P1) so A1's resync can run (the route returns 501 until then).
-2. Frontend integration: every route the frontend calls now exists. Presign: aws returns an S3 URL; local returns `/api/uploads/{id}/content`, which needs the Authorization header.
-3. A full real job end to end once AWS credentials (and Jev / ScaleDown keys) are available, locally or on the deployed stack.
+1. **Run one real job end to end** (runbook: `.agents/HANDOFF_NEXT_CHAT.md`): upload or URL, plan, edit, build, row, report, download. Fix every break in G-owned files; ask A1 through `CHANGES_REQUESTED.md` for the rest.
+2. A1 wires `resync()` on `connectors/sync.py` (the route returns 501 until then).
+3. Jira and Confluence in `composio.py` (P1), researched with real calls at first use.
+4. Frontend presigned upload for files over 6 MB (`POST /uploads/presign`; local `PUT /api/uploads/{id}/content` needs the Authorization header).

@@ -7,6 +7,7 @@ All routes act on the signed-in user only. No route ever returns a stored API ke
 from __future__ import annotations
 
 import asyncio
+from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -55,9 +56,21 @@ def template_path() -> Path:
     raise ApiError(404, "template not found", detail=f"{TEMPLATE_NAME} is not in this build")
 
 
+@lru_cache(maxsize=1)
+def _sts_account_id() -> str:
+    """Bob's own account from the default chain, looked up once ("" when there are no usable keys)."""
+    import boto3
+
+    try:
+        return str(boto3.client("sts").get_caller_identity()["Account"])
+    except Exception:
+        return ""
+
+
 @router.get("/me/aws/setup")
 async def aws_setup(user: User) -> dict[str, Any]:
-    account_id = settings.account_id or ""
+    # BOB_ACCOUNT_ID wins; otherwise the API's own credentials say which account Bob runs in.
+    account_id = settings.account_id or await asyncio.to_thread(_sts_account_id)
     return {
         "bob_account_id": account_id or None,
         "external_id": user.external_id,
@@ -84,7 +97,12 @@ async def verify_aws(user: User, orchestrator: Orch) -> dict[str, Any]:
 @router.put("/me/models")
 async def put_models(body: ModelsUpdate, user: User, orchestrator: Orch) -> UserProfile:
     roles = ModelRoles.model_validate(body.model_dump(exclude={"api_keys"}))
-    return await orchestrator.update_models(user.id, roles, body.api_keys or None)
+    try:
+        return await orchestrator.update_models(user.id, roles, body.api_keys or None)
+    except NotImplementedError as exc:  # A1: KMS-encrypted keys are P1
+        raise ApiError(
+            501, "API keys for OpenAI-compatible endpoints are not available yet", detail=str(exc)
+        ) from exc
 
 
 @router.post("/me/models/verify")

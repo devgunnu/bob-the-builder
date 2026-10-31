@@ -7,7 +7,7 @@ import type { BrowseItem, ConnectorState, JobOptions, ModelRoles, SourceSpec, To
 import { CASE_TYPES } from "../api/types";
 import { Link } from "react-router";
 import { ModelsEditor } from "../components/ModelsEditor";
-import { Button, ErrorBanner, Label, useTitle } from "../components/ui";
+import { Button, ErrorBanner, Label, caseLabel, useTitle } from "../components/ui";
 
 const TOOLKIT_LABEL: Record<Toolkit, string> = { notion: "Notion", confluence: "Confluence", jira: "Jira", googledrive: "Google Drive" };
 
@@ -234,6 +234,7 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
   const uploads = useUploads();
   const seeds = useUploads();
   const [connectors, setConnectors] = useState<ConnectorState[] | null>(null);
+  const [connectorsError, setConnectorsError] = useState<ApiError | null>(null);
   const [connected, setConnected] = useState<Partial<Record<Toolkit, Connected>>>({});
   const [targetRows, setTargetRows] = useState(1000);
   const [budget, setBudget] = useState(10);
@@ -252,7 +253,7 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
     api
       .connectors()
       .then(setConnectors)
-      .catch((e) => setError(e));
+      .catch((e) => (setConnectorsError(e), setConnectors([])));
     if (firstFiles.current.length) void uploads.add(firstFiles.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -420,7 +421,9 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
           )}
 
           {tab === "apps" &&
-            (connectors === null ? (
+            (connectorsError ? (
+              <ErrorBanner error={connectorsError} title="Connected apps are unavailable" />
+            ) : connectors === null ? (
               <div className="flex items-center gap-2 py-2 text-[12.5px] text-dim"><Loader2 className="size-4 animate-spin" /> Loading connectors…</div>
             ) : connectors.length === 0 ? (
               <div className="py-2 text-[12.5px] text-dim">No connectors are configured on the server.</div>
@@ -605,7 +608,7 @@ function AdvancedOptions({
           {CASE_TYPES.map((c) => (
             <NumField
               key={c}
-              label={c.replace("_", " ")}
+              label={caseLabel(c)}
               value={mix[c]}
               step={0.05}
               max={1}

@@ -7,7 +7,7 @@ import type { PresetInfo, Report, Row } from "../api/types";
 import { useJobStream } from "../api/useJobStream";
 import { AppShell } from "../components/AppShell";
 import { Bob } from "../components/Bob";
-import { Button, Empty, ErrorBanner, Panel, caseLabel, pct, usd, useTitle } from "../components/ui";
+import { Button, Empty, ErrorBanner, Panel, caseLabel, checkLabel, pct, usd, useTitle } from "../components/ui";
 import { Bars } from "../components/viz/Bars";
 import { Heatgrid, type GridCell } from "../components/viz/Heatgrid";
 
@@ -166,8 +166,8 @@ function QuickDownload({ jobId, files, preset }: { jobId: string; files: Record<
     }
   };
   return (
-    <div className="flex flex-col items-end gap-1">
-      <Button tone="yellow" className="px-5 py-3 text-[16px]" busy={busy} onClick={existing ? () => api.download(jobId, existing).catch(setError) : go}>
+    <div className="flex flex-col gap-1 sm:items-end">
+      <Button tone="yellow" className="w-full px-5 py-3 text-[16px] sm:w-auto" busy={busy} onClick={existing ? () => api.download(jobId, existing).catch(setError) : go}>
         <Download className="size-4" /> Download dataset
       </Button>
       <span className="text-[11px] text-dim">{preset} · JSONL · train split</span>
@@ -213,10 +213,10 @@ export default function ReportScreen() {
           </Empty>
         ) : (
           <>
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-6 flex flex-wrap items-center gap-5">
-              <Bob pose="hero" size={88} float={false} still />
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-5">
+              <Bob pose="hero" size={88} float={false} still className="hidden shrink-0 sm:block" />
               <div className="min-w-0 flex-1">
-                <h1 className="font-display text-[30px] font-extrabold leading-tight">{kept.toLocaleString()} verified rows are ready</h1>
+                <h1 className="font-display text-[26px] font-extrabold leading-tight sm:text-[30px]">{kept.toLocaleString()} verified rows are ready</h1>
                 <p className="mt-1 text-[14px] text-white/70">
                   {covered} of {r.coverage.length} cells hit their target · {pct(r.judge_rate)} needed the judge · cost {usd(cost?.total_usd)}
                   {ratio ? ` (frontier-only ${usd(cost?.frontier_only_estimate_usd)}, ${ratio.toFixed(0)}x more)` : ""}
@@ -253,10 +253,10 @@ export default function ReportScreen() {
             {tab === "quality" && (
               <div className="grid gap-4 md:grid-cols-2">
                 <Panel title="Pass rate by check">
-                  <Bars data={Object.entries(r.pass_rate_by_check).sort((a, b) => a[1] - b[1])} format={(v) => pct(v)} max={1} />
+                  <Bars data={Object.entries(r.pass_rate_by_check).map(([k, v]) => [checkLabel(k), v] as [string, number]).sort((a, b) => a[1] - b[1])} format={(v) => pct(v)} max={1} />
                 </Panel>
                 <Panel title="Why rows were rejected">
-                  <Bars data={Object.entries(r.reject_reasons).sort((a, b) => b[1] - a[1])} tone="bg-rose-400/70" />
+                  <Bars data={Object.entries(r.reject_reasons).map(([k, v]) => [checkLabel(k), v] as [string, number]).sort((a, b) => b[1] - a[1])} tone="bg-rose-400/70" />
                   <div className="mt-3 text-[12px] text-dim">{r.duplicates_removed.toLocaleString()} duplicates removed</div>
                 </Panel>
                 <Panel title="Judge">

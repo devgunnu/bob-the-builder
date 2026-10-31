@@ -81,7 +81,7 @@ export function Heatgrid({ axes, cells, highlight, onCellClick, compact }: Heatg
         </div>
       </div>
       <div className="scroll-thin overflow-x-auto">
-        <table className="w-full table-fixed border-separate" style={{ borderSpacing: compact ? 3 : 4 }}>
+        <table className="w-full min-w-[480px] table-fixed border-separate" style={{ borderSpacing: compact ? 3 : 4 }}>
           <colgroup>
             <col className="w-[34%] sm:w-[26%]" />
           </colgroup>

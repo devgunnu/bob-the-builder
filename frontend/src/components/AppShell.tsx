@@ -6,22 +6,39 @@ import { api } from "../api/client";
 import type { Health, JobStatus } from "../api/types";
 import { Bob, type BobPose } from "./Bob";
 
+// /health makes one real (paid) call per provider (CONTRACTS section 6), so every
+// screen shares one result and it refreshes at most every 5 minutes, only while visible.
+const HEALTH_TTL_MS = 5 * 60_000;
+let healthCache: { at: number; value: Promise<Health> } | null = null;
+function sharedHealth(): Promise<Health> {
+  if (!healthCache || Date.now() - healthCache.at > HEALTH_TTL_MS) {
+    const value = api.health();
+    healthCache = { at: Date.now(), value };
+    value.catch(() => (healthCache = null)); // retry on the next mount after a failure
+  }
+  return healthCache.value;
+}
+
 // Quiet by default: nothing when every provider is healthy, one chip when something is wrong.
 function HealthChips() {
   const [h, setH] = useState<Health | null>(null);
   const [down, setDown] = useState(false);
+  const [open, setOpen] = useState(false);
   useEffect(() => {
     let alive = true;
-    const load = () =>
-      api
-        .health()
+    const load = () => {
+      if (document.visibilityState === "hidden") return;
+      sharedHealth()
         .then((x) => alive && (setH(x), setDown(false)))
         .catch(() => alive && setDown(true));
+    };
     load();
-    const t = window.setInterval(load, 60_000);
+    const t = window.setInterval(load, HEALTH_TTL_MS);
+    document.addEventListener("visibilitychange", load);
     return () => {
       alive = false;
       window.clearInterval(t);
+      document.removeEventListener("visibilitychange", load);
     };
   }, []);
   if (down) return <span className="rounded-full border border-rose-400/30 bg-rose-400/10 px-2.5 py-1 text-[11px] text-rose-300">API offline</span>;
@@ -35,8 +52,25 @@ function HealthChips() {
       </Link>
     );
   return (
-    <span title={bad.map(([k, v]) => `${k}: ${v}`).join("\n")} className="flex items-center gap-1 rounded-full border border-rose-400/30 bg-rose-400/10 px-2.5 py-1 text-[11px] text-rose-300">
-      <X className="size-3" /> {bad.map(([k]) => k).join(", ")} unavailable
+    <span className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex items-center gap-1 rounded-full border border-rose-400/30 bg-rose-400/10 px-2.5 py-1 text-[11px] text-rose-300 hover:bg-rose-400/15"
+      >
+        <X className="size-3" /> {bad.length > 2 ? `${bad.length} services` : bad.map(([k]) => k).join(", ")} unavailable
+      </button>
+      {open && (
+        <div role="dialog" aria-label="Service errors" className="absolute right-0 top-full z-30 mt-2 w-[min(420px,calc(100vw-2rem))] space-y-2 rounded-2xl border border-line bg-panel-2 p-3 text-left shadow-2xl shadow-black/60">
+          {bad.map(([k, v]) => (
+            <div key={k}>
+              <div className="text-[12px] font-medium capitalize text-white">{k}</div>
+              <div className="break-words font-mono text-[11px] text-rose-200/90">{v}</div>
+            </div>
+          ))}
+          <Link to="/account" className="block pt-1 text-[12px] text-bob-sky hover:underline">Account settings</Link>
+        </div>
+      )}
     </span>
   );
 }
@@ -107,7 +141,7 @@ export function AppShell({ pose = "idle", title, step, status, hasReport, childr
         <div className="flex min-w-0 items-center gap-2">
           <Link to="/" className="flex shrink-0 items-center gap-2" aria-label="Bob home">
             <Bob pose={pose} size={34} float={false} still />
-            <span className="font-display text-[17px] font-extrabold tracking-tight">bob</span>
+            <span className={`font-display text-[17px] font-extrabold tracking-tight ${step ? "hidden sm:inline" : ""}`}>bob</span>
           </Link>
           {title && <span className="hidden min-w-0 truncate text-[13px] text-dim lg:block">/ {title}</span>}
         </div>
