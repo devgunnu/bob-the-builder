@@ -7,6 +7,9 @@ import type { BrowseItem, ConnectorState, JobOptions, ModelRoles, SourceSpec, To
 import { CASE_TYPES } from "../api/types";
 import { ModelsEditor } from "../components/ModelsEditor";
 import { Button, ErrorBanner, Label, caseLabel, useTitle } from "../components/ui";
+import billing from "../../../demo/smoke/billing.md?raw";
+import rateLimits from "../../../demo/smoke/rate-limits.md?raw";
+import webhooks from "../../../demo/smoke/webhooks-overview.md?raw";
 
 const TOOLKIT_LABEL: Record<Toolkit, string> = { notion: "Notion", confluence: "Confluence", jira: "Jira", googledrive: "Google Drive" };
 
@@ -235,8 +238,8 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
   const [connectors, setConnectors] = useState<ConnectorState[] | null>(null);
   const [connectorsError, setConnectorsError] = useState<ApiError | null>(null);
   const [connected, setConnected] = useState<Partial<Record<Toolkit, Connected>>>({});
-  const [targetRows, setTargetRows] = useState(1000);
-  const [budget, setBudget] = useState(10);
+  const [targetRows, setTargetRows] = useState(60);
+  const [budget, setBudget] = useState(2);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const [tab, setTab] = useState<Tab>(() => (goal.match(URL_RE) || !initialFiles.length ? "website" : "files"));
@@ -263,7 +266,7 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
   for (const c of Object.values(connected)) {
     if (c && c.picked.length) sources.push({ kind: "composio", toolkit: c.toolkit, connected_account_id: c.account_id, scope: scopeFor(c.toolkit, c.picked) });
   }
-  const ready = goal.trim().length > 3 && sources.length > 0;
+  const ready = goal.trim().length > 3 && sources.length > 0 && !uploads.busy;
 
   const create = async () => {
     if (!ready) {
@@ -286,6 +289,15 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
       setError(e as ApiError);
       setCreating(false);
     }
+  };
+
+  const addSample = () => {
+    setTab("files");
+    void uploads.add([
+      new File([billing], "billing.md", { type: "text/markdown" }),
+      new File([rateLimits], "rate-limits.md", { type: "text/markdown" }),
+      new File([webhooks], "webhooks-overview.md", { type: "text/markdown" }),
+    ]);
   };
 
   const doPreview = async () => {
@@ -334,6 +346,13 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
       </motion.div>
 
       <div className="mb-6">{composer(create, uploads.add, creating)}</div>
+
+      {!uploads.files.length && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line px-4 py-3 text-[13px] text-dim">
+          <span>Don't have documents handy? Try Bob with sample support docs.</span>
+          <Button tone="ghost" busy={uploads.busy} onClick={addSample}>Use sample docs</Button>
+        </div>
+      )}
 
       {error && (
         <div className="mb-4">
@@ -459,7 +478,7 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
             <div>
               <Label>Rows to keep</Label>
               <div className="flex items-center gap-3">
-                <input type="range" min={100} max={5000} step={100} value={targetRows} onChange={(e) => setTargetRows(Number(e.target.value))} className="flex-1 accent-[var(--color-bob-blue)]" />
+                <input type="range" min={10} max={5000} step={10} value={targetRows} onChange={(e) => setTargetRows(Number(e.target.value))} className="flex-1 accent-[var(--color-bob-blue)]" />
                 <input type="number" min={10} value={targetRows} onChange={(e) => setTargetRows(Math.max(10, Number(e.target.value) || 10))} className="w-20 rounded-lg border border-line bg-transparent px-2 py-1 text-right font-mono text-[13px] outline-none" />
               </div>
             </div>

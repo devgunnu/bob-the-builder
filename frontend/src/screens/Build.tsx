@@ -293,6 +293,8 @@ export default function BuildScreen() {
       ? `Stopped: ${s.status}.`
       : s.round && s.round.n > 1
         ? `Round ${s.round.n}: filling ${s.round.cells.length} cells that need more rows.`
+        : s.status === "building"
+          ? "Writing and checking rows against your sources."
         : stage
           ? `${s.lastStage === "verify" ? "Checking rows" : s.lastStage === "generate" ? "Writing rows" : `Working on ${s.lastStage}`}${stage.detail ? ` · ${stage.detail}` : ""}`
           : s.detail || "Starting…";
