@@ -34,12 +34,6 @@ Resources:
         Image: aws/codebuild/standard:7.0
         PrivilegedMode: true
       TimeoutInMinutes: 60
-      Triggers:
-        Webhook: true
-        FilterGroups:
-          - - {Type: EVENT, Pattern: PUSH}
-            - Type: HEAD_REF
-              Pattern: !Sub '^refs/heads/${Branch}$'
 Outputs:
   ProjectName:
     Value: !Ref Project
