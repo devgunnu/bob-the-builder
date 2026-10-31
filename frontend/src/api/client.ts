@@ -4,6 +4,7 @@
 import { fetchEventSource } from "@microsoft/fetch-event-source";
 import { authHeader, onUnauthorized } from "../auth/session";
 import type {
+  AvailableModel,
   AwsSetup,
   BedrockAccess,
   BobEvent,
@@ -49,6 +50,8 @@ function friendly(status: number, error: string): string {
   if (status === 412 && /aws/i.test(error)) return "Connect your AWS account before starting a job.";
   if (status === 412 && /model/i.test(error)) return "Verify your models before starting a job.";
   if (status === 429) return "You already have a job running. Wait for it to finish, then try again.";
+  if (status === 409 && /approv/i.test(error)) return "This plan was already started or the job has stopped.";
+  if (status === 409) return "The job is still running. Try again when it finishes.";
   return error;
 }
 
@@ -99,6 +102,7 @@ export const api = {
   verifyAws: () => request<{ ok: boolean; error?: string }>("/me/aws/verify", { method: "POST" }),
   saveModels: (roles: ModelRoles, api_keys?: Record<string, string>) =>
     request<UserProfile>("/me/models", { method: "PUT", ...json(api_keys && Object.keys(api_keys).length ? { ...roles, api_keys } : roles) }),
+  availableModels: () => request<AvailableModel[]>("/me/models/available"),
   verifyModels: () => request<{ ok: boolean; roles: Record<string, string> }>("/me/models/verify", { method: "POST" }),
   upload(files: File[]) {
     const fd = new FormData();
@@ -122,6 +126,15 @@ export const api = {
     const p = new URLSearchParams();
     Object.entries(q).forEach(([k, v]) => v !== undefined && p.set(k, String(v)));
     return request<{ total: number; rows: Row[] }>(`/jobs/${id}/rows?${p}`);
+  },
+  /** The newest `n` rows (the API pages oldest first), newest first; `before` skips rows already shown. */
+  async newestRows(id: string, q: { verdict?: "kept" | "rejected"; cell_id?: string }, n: number, before = 0) {
+    const head = await api.rows(id, { ...q, offset: 0, limit: 1 });
+    const end = Math.max(0, head.total - before);
+    const start = Math.max(0, end - n);
+    if (end === 0) return { total: head.total, rows: [] as Row[], more: false };
+    const page = await api.rows(id, { ...q, offset: start, limit: Math.min(200, end - start) });
+    return { total: page.total, rows: [...page.rows].reverse(), more: start > 0 };
   },
   row: (id: string, rowId: string) => request<Row>(`/jobs/${id}/rows/${rowId}`),
   spotCheck: (id: string, rowId: string, ok: boolean) =>
@@ -196,7 +209,7 @@ export function subscribeJob(jobId: string, onEvent: (e: BobEvent, id: number) =
       }
       const e = { type: msg.event, data } as BobEvent;
       onEvent(e, id);
-      if (e.type === "error" || (e.type === "job.status" && TERMINAL.has(e.data.status))) ctrl.abort();
+      if (e.type === "error" || e.type === "done" || (e.type === "job.status" && TERMINAL.has(e.data.status))) ctrl.abort();
     },
     onerror(err) {
       onError?.(err);
