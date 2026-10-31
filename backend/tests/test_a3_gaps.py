@@ -47,7 +47,7 @@ def test_gap_round_targets_thin_and_hard_cells():
     out = plan_gap_round(_job(), cells)
     assert [(c.id, n) for c, n in out] == [("c2", 39), ("c1", 8)]
     assert out[0][0].weight == 1.5 and out[1][0].weight == 1.0
-    assert cells[2].weight == 1.0  # input cells are not changed
+    assert out[0][0] is cells[2]  # updated in place, so job.plan.cells keep the weight
 
 
 def test_gap_round_budget_cap_scales_down():
