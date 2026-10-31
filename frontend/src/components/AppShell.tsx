@@ -44,12 +44,6 @@ function HealthChips() {
   if (!h) return null;
   const bad = Object.entries(h.keys).filter(([, v]) => v !== "ok");
   if (!bad.length) return <span title="All services are reachable" className="size-2 rounded-full bg-bob-mint/80" />;
-  if (bad.length === 1 && bad[0][0] === "bedrock" && /not connected/i.test(bad[0][1]))
-    return (
-      <Link to="/account#aws" className="rounded-full border border-bob-yellow/30 bg-bob-yellow/10 px-2.5 py-1 text-[11px] text-bob-yellow">
-        Connect AWS
-      </Link>
-    );
   return (
     <span className="relative">
       <button

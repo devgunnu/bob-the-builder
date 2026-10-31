@@ -5,7 +5,6 @@ import { Check, FileUp, Globe, Link2, Loader2, Plug, Search, SlidersHorizontal, 
 import { api, ApiError } from "../api/client";
 import type { BrowseItem, ConnectorState, JobOptions, ModelRoles, SourceSpec, Toolkit, UserProfile } from "../api/types";
 import { CASE_TYPES } from "../api/types";
-import { Link } from "react-router";
 import { ModelsEditor } from "../components/ModelsEditor";
 import { Button, ErrorBanner, Label, caseLabel, useTitle } from "../components/ui";
 
@@ -333,17 +332,6 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
         <h1 className="font-display text-[28px] font-extrabold leading-tight">Where should Bob look?</h1>
         <p className="mt-1 text-[14px] text-dim">Add the material your dataset should come from.</p>
       </motion.div>
-
-      {me && (!me.bedrock_verified_at || !me.models_verified_at) && (
-        <Link
-          to={!me.bedrock_verified_at ? "/account#aws" : "/account#models"}
-          className="mb-4 flex items-center gap-3 rounded-2xl bg-bob-yellow/[0.08] px-4 py-3 text-[13.5px] text-bob-yellow hover:bg-bob-yellow/[0.12]"
-        >
-          <Plug className="size-4 shrink-0" />
-          <span className="flex-1">{!me.bedrock_verified_at ? "Connect your AWS account first. Bob runs the models in your account." : "Verify your models first. It takes a few seconds."}</span>
-          <span className="shrink-0 font-medium">{!me.bedrock_verified_at ? "Connect AWS" : "Verify models"} →</span>
-        </Link>
-      )}
 
       <div className="mb-6">{composer(create, uploads.add, creating)}</div>
 

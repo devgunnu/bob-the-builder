@@ -10,7 +10,7 @@ npm run build      # tsc + vite build
 The client always calls the relative `/api` (same origin through CloudFront in production). The application does not require sign-in.
 
 ## Flow
-0. Visit `/account` once: connect AWS (role ARN + region, Save and check) and choose models per role (Save and check). Setup shows a banner until both are verified.
+0. Bob uses Bedrock in its hosting account and checks the configured models when a job starts. Model settings can be changed at `/account`.
 1. `/` landing: floating field, glowing composer, ghost-text suggestions (Tab accepts).
 2. Enter: everything scatters, the room goes black, only the bar stays lit.
 3. The bar morphs (shared `layoutId="composer"`) into the Setup screen's goal field. Sources: website (Firecrawl), files (`/uploads`), connected apps (Composio OAuth popup + page picker), seeds, rows, budget.

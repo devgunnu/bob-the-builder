@@ -29,6 +29,27 @@ def _orch(tmp_path, runner=None) -> Orchestrator:
     )
 
 
+async def test_existing_profile_switches_to_hosting_bedrock(tmp_path, monkeypatch):
+    from bob.config import get_settings
+
+    settings = get_settings().model_copy(update={"env": "aws", "bedrock_auth": "default", "bedrock_default_region": "us-east-1"})
+    monkeypatch.setattr("bob.orchestrator.get_settings", lambda: settings)
+    o = _orch(tmp_path)
+    user = await o.get_or_create_user("local", None)
+    user.bedrock = BedrockAccess(mode="assume_role", role_arn="arn:aws:iam::123456789012:role/Old", region="us-west-2")
+    user.bedrock_verified_at = datetime.now(UTC)
+    user.models_verified_at = datetime.now(UTC)
+    await o.store.put_user(user)
+
+    migrated = await o.get_or_create_user("local", None)
+    assert migrated.bedrock == BedrockAccess(mode="default", region="us-east-1")
+    assert migrated.bedrock_verified_at is None and migrated.models_verified_at is None
+    assert (await o.store.get_user("local")).bedrock == migrated.bedrock
+
+    updated = await o.update_bedrock("local", BedrockAccess(mode="assume_role", role_arn="arn:aws:iam::123456789012:role/Other", region="us-west-2"))
+    assert updated.bedrock == migrated.bedrock
+
+
 async def _wait_terminal(o: Orchestrator, job_id: str, timeout: float = 20) -> Job:
     for _ in range(int(timeout * 10)):
         job = await o.store.get_job(job_id)

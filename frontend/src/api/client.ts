@@ -38,14 +38,15 @@ export class ApiError extends Error {
     this.status = status;
     this.provider = provider;
     this.detail = detail;
-    if (status === 412 && /aws/i.test(message)) this.fix = { label: "Connect AWS", to: "/account#aws" };
+    if (status === 412 && /hosting/i.test(message)) this.fix = { label: "Model settings", to: "/account#models" };
     if (status === 412 && /model/i.test(message)) this.fix = { label: "Verify models", to: "/account#models" };
   }
 }
 
 // Plain-language versions of the contract's error strings.
 function friendly(status: number, error: string): string {
-  if (status === 412 && /aws/i.test(error)) return "Connect your AWS account before starting a job.";
+  if (status === 412 && /hosting aws/i.test(error)) return "Bob could not access the hosting account's AWS services.";
+  if (status === 412 && /hosting models/i.test(error)) return "Bob could not verify the configured models.";
   if (status === 412 && /model/i.test(error)) return "Verify your models before starting a job.";
   if (status === 429) return "You already have a job running. Wait for it to finish, then try again.";
   if (status === 409 && /approv/i.test(error)) return "This plan was already started or the job has stopped.";

@@ -56,11 +56,11 @@ function CostDetails({ cost, job }: { cost: CostSummary; job: Job | null }) {
             ) : (
               <span className="font-mono text-white/80">{usd(m.usd)}</span>
             )}
-            {bedrock && <span className="text-[10.5px] text-dim" title="Billed to your AWS account">AWS</span>}
+            {bedrock && <span className="text-[10.5px] text-dim" title="Billed to Bob's hosting account">AWS</span>}
           </li>
         );
       })}
-      <li className="text-[11px] text-dim sm:col-span-2">Rows marked AWS run on Bedrock and are billed to your AWS account.</li>
+      <li className="text-[11px] text-dim sm:col-span-2">Rows marked AWS run on Bedrock in Bob's hosting account.</li>
     </ul>
   );
 }
