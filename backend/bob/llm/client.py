@@ -6,6 +6,7 @@ no assistant prefill, no vendor-only tags. JSON parse failure: the client retrie
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel
@@ -54,6 +55,20 @@ class LLMClient(Protocol):
         ...
 
 
+# The job that the current pipeline stage runs for. run_job sets it, so stage functions whose CONTRACTS
+# section 3 signature has no `job` (triage, build_topics, build_evidence, propose_plan) can call
+# get_llm(current_job(), role). asyncio tasks and asyncio.to_thread copy it.
+CURRENT_JOB: ContextVar[Job | None] = ContextVar("bob_current_job", default=None)
+
+
+def current_job() -> Job:
+    """The Job of the running pipeline stage. Raises RuntimeError outside run_job."""
+    job = CURRENT_JOB.get()
+    if job is None:
+        raise RuntimeError("no current job: call this inside Orchestrator.run_job (or set CURRENT_JOB)")
+    return job
+
+
 def model_for(job: Job, role: Role) -> ModelConfig:
     """The job's ModelConfig for a role: Job.models.<role>; fallback None -> writer."""
     if role not in ROLES:
@@ -68,4 +83,8 @@ def get_llm(job: Job, role: Role) -> LLMClient:
     bedrock -> llm/bedrock.py (Converse, the job's BedrockAccess); openai_compatible -> llm/openai_compat.py (P1).
     """
     cfg = model_for(job, role)
-    raise NotImplementedError(f"A1 wave 1: LLM client for provider {cfg.provider!r}")
+    if cfg.provider == "bedrock":
+        from bob.llm.bedrock import BedrockClient
+
+        return BedrockClient(job, role, cfg)
+    raise NotImplementedError(f"provider {cfg.provider!r} is P1 (llm/openai_compat.py)")
