@@ -1,0 +1,11 @@
+version: 0.2
+phases:
+  install:
+    runtime-versions:
+      nodejs: 22
+    commands:
+      - npm install -g aws-cdk
+      - python3 -m pip install -r infra/requirements.txt
+  build:
+    commands:
+      - bash infra/codebuild-deploy.sh

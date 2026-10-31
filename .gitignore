@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+secrets.json
+runs/
+cdk.out/
+infra/outputs.json
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.venv/
+*.stackdump
+.pytest_cache/
+.ruff_cache/
+.DS_Store

@@ -1,0 +1,257 @@
+{
+  "docs": [
+    {
+      "file": "introduction.md",
+      "uri": "https://docs.firecrawl.dev/introduction",
+      "title": "Introduction | Firecrawl",
+      "chars": "15855",
+      "hash": "4f4b3ebb90f3b08dbe5978a21a560b17fa2fd6de"
+    },
+    {
+      "file": "billing.md",
+      "uri": "https://docs.firecrawl.dev/billing",
+      "title": "Billing | Firecrawl",
+      "chars": "24256",
+      "hash": "0a0b241bf88abc62112d393bb6f72e177ebbfa80"
+    },
+    {
+      "file": "rate-limits.md",
+      "uri": "https://docs.firecrawl.dev/rate-limits",
+      "title": "Rate Limits | Firecrawl",
+      "chars": "4406",
+      "hash": "34b9e7d91f4487d7579329bb749aa8af916ecdcc"
+    },
+    {
+      "file": "webhooks-overview.md",
+      "uri": "https://docs.firecrawl.dev/webhooks/overview",
+      "title": "Webhooks | Firecrawl",
+      "chars": "2576",
+      "hash": "c814b4e69bbf0df248cf6df09d005f0ff8a26674"
+    },
+    {
+      "file": "webhooks-events.md",
+      "uri": "https://docs.firecrawl.dev/webhooks/events",
+      "title": "Webhook Event Types | Firecrawl",
+      "chars": "11160",
+      "hash": "8b62aac2c6661aaab59a500d9ae156d9017c5755"
+    },
+    {
+      "file": "webhooks-security.md",
+      "uri": "https://docs.firecrawl.dev/webhooks/security",
+      "title": "Webhook Security | Firecrawl",
+      "chars": "3844",
+      "hash": "b444928b3d950790dd53d04f4f0e590dd348ce89"
+    },
+    {
+      "file": "webhooks-testing.md",
+      "uri": "https://docs.firecrawl.dev/webhooks/testing",
+      "title": "Webhook Testing | Firecrawl",
+      "chars": "1772",
+      "hash": "9589e609bb989fee6ebd1aa42f2f7db5e2c8384a"
+    },
+    {
+      "file": "features-key-restrictions.md",
+      "uri": "https://docs.firecrawl.dev/features/key-restrictions",
+      "title": "Key Restrictions | Firecrawl",
+      "chars": "5288",
+      "hash": "8da11babb5c4d03ee2dfb420fbef29501eb13ff4"
+    },
+    {
+      "file": "features-ip-restrictions.md",
+      "uri": "https://docs.firecrawl.dev/features/ip-restrictions",
+      "title": "IP Restrictions | Firecrawl",
+      "chars": "2692",
+      "hash": "48159a6e55d0b8ed30e167e6248f509ce710ab9c"
+    },
+    {
+      "file": "features-scrape.md",
+      "uri": "https://docs.firecrawl.dev/features/scrape",
+      "title": "Scrape | Firecrawl",
+      "chars": "52996",
+      "hash": "15bb642fed205ad1a3f950e0df0cb2f19d6ebd12"
+    },
+    {
+      "file": "features-batch-scrape.md",
+      "uri": "https://docs.firecrawl.dev/features/batch-scrape",
+      "title": "Batch Scrape | Firecrawl",
+      "chars": "12139",
+      "hash": "be41eb85f7d60af7bb32f37ced81e904d3f62ecb"
+    },
+    {
+      "file": "features-crawl.md",
+      "uri": "https://docs.firecrawl.dev/features/crawl",
+      "title": "Crawl | Firecrawl",
+      "chars": "29009",
+      "hash": "f717d5672abc33b354130508a2e7bebe5969c0f6"
+    },
+    {
+      "file": "features-map.md",
+      "uri": "https://docs.firecrawl.dev/features/map",
+      "title": "Map | Firecrawl",
+      "chars": "7614",
+      "hash": "44a1e81ffe0d43ca0da5cbad5815bdcb24ce0911"
+    },
+    {
+      "file": "features-search.md",
+      "uri": "https://docs.firecrawl.dev/features/search",
+      "title": "Search | Firecrawl",
+      "chars": "28352",
+      "hash": "4265c38c8d922f4bb771ad6aabc56c3831987557"
+    },
+    {
+      "file": "features-enhanced-mode.md",
+      "uri": "https://docs.firecrawl.dev/features/enhanced-mode",
+      "title": "Enhanced Mode | Firecrawl",
+      "chars": "2954",
+      "hash": "04dc5170c9b0d11831e45ac06627c6ad92d541f9"
+    },
+    {
+      "file": "features-proxies.md",
+      "uri": "https://docs.firecrawl.dev/features/proxies",
+      "title": "Proxies | Firecrawl",
+      "chars": "4057",
+      "hash": "b9884bc3eb2b8a53cb3296b66d3b179f7ee90c6b"
+    },
+    {
+      "file": "features-fast-scraping.md",
+      "uri": "https://docs.firecrawl.dev/features/fast-scraping",
+      "title": "Faster Scraping | Firecrawl",
+      "chars": "5814",
+      "hash": "6e364e68653b66ef318afa9df9c4f39883aedf91"
+    },
+    {
+      "file": "features-lockdown.md",
+      "uri": "https://docs.firecrawl.dev/features/lockdown",
+      "title": "Lockdown Mode | Firecrawl",
+      "chars": "4936",
+      "hash": "6098277c5ae69c787278297469b4a673b569aa3a"
+    },
+    {
+      "file": "features-pii-redaction.md",
+      "uri": "https://docs.firecrawl.dev/features/pii-redaction",
+      "title": "PII Redaction | Firecrawl",
+      "chars": "4274",
+      "hash": "1527152b3ea6ff03b3a59dc1b0e363afecd98a54"
+    },
+    {
+      "file": "features-llm-extract.md",
+      "uri": "https://docs.firecrawl.dev/features/llm-extract",
+      "title": "JSON mode | Firecrawl",
+      "chars": "15036",
+      "hash": "a8976a27c482b84f42d565c9fab9eb88c33e76b8"
+    },
+    {
+      "file": "features-extract.md",
+      "uri": "https://docs.firecrawl.dev/features/extract",
+      "title": "Extract | Firecrawl",
+      "chars": "14452",
+      "hash": "7f8277995906bca114b89a832b9215425a3f3f4d"
+    },
+    {
+      "file": "features-change-tracking.md",
+      "uri": "https://docs.firecrawl.dev/features/change-tracking",
+      "title": "Change Tracking | Firecrawl",
+      "chars": "20075",
+      "hash": "4e68e5e19c4a2b3bf9770d361e092614038a3d34"
+    },
+    {
+      "file": "features-document-parsing.md",
+      "uri": "https://docs.firecrawl.dev/features/document-parsing",
+      "title": "Document Parsing | Firecrawl",
+      "chars": "4255",
+      "hash": "ce37cd8d72d81d8bf00f11042712afefe8b45624"
+    },
+    {
+      "file": "advanced-scraping-guide.md",
+      "uri": "https://docs.firecrawl.dev/advanced-scraping-guide",
+      "title": "Advanced Scraping Guide | Firecrawl",
+      "chars": "26627",
+      "hash": "6c0c60ef8f215beabe86d1e62aee2a24f4c13f45"
+    },
+    {
+      "file": "partner-credits.md",
+      "uri": "https://docs.firecrawl.dev/partner-credits",
+      "title": "Partner Credits | Firecrawl",
+      "chars": "3529",
+      "hash": "42553bc9d5bab4f19e91ae7131cff1f5a2cf552d"
+    }
+  ],
+  "notion": [
+    {
+      "file": "notion/reply-style-guide-and-canned-replies.md",
+      "uri": "notion://40a41e04-143a-810a-bd05-cfc5a94e92eb",
+      "title": "Reply style guide and canned replies",
+      "chars": "1384",
+      "hash": "e380cecb711cb187e5ad634a2061c85469dee742"
+    },
+    {
+      "file": "notion/enterprise-and-plan-change-hand-offs.md",
+      "uri": "notion://40a41e04-143a-81b1-af40-daef1b307de0",
+      "title": "Enterprise and plan-change hand-offs",
+      "chars": "1425",
+      "hash": "723082c8d9531aa1f51d6f10b92aa13e3618ae06"
+    },
+    {
+      "file": "notion/refunds-and-credit-adjustments.md",
+      "uri": "notion://40a41e04-143a-81a1-af98-d87397c2285e",
+      "title": "Refunds and credit adjustments",
+      "chars": "1704",
+      "hash": "5760d3385b1e6f61ed221e93296a15331e4f3d28"
+    },
+    {
+      "file": "notion/known-issues-and-workarounds.md",
+      "uri": "notion://40a41e04-143a-8123-becd-dadd993345c8",
+      "title": "Known issues and workarounds",
+      "chars": "2022",
+      "hash": "cac916f900cd42f8a09ce7e2cbddd51c9d24c425"
+    },
+    {
+      "file": "notion/escalation-policy.md",
+      "uri": "notion://40a41e04-143a-816c-8dd5-d2776cbf4d0b",
+      "title": "Escalation policy",
+      "chars": "2244",
+      "hash": "0830c545eb1e7927c6ec901e64fa6447e270a857"
+    },
+    {
+      "file": "notion/support-faq-internal.md",
+      "uri": "notion://40a41e04-143a-81e5-81f6-f6c6fe79ee76",
+      "title": "Support FAQ (internal)",
+      "chars": "2417",
+      "hash": "b45ecdc7a53ce4b5a603269c6cbfc0d0d194fb7f"
+    }
+  ],
+  "source": {
+    "mode": "curated",
+    "url": "https://docs.firecrawl.dev",
+    "paths": [
+      "/introduction",
+      "/billing",
+      "/rate-limits",
+      "/webhooks/overview",
+      "/webhooks/events",
+      "/webhooks/security",
+      "/webhooks/testing",
+      "/features/key-restrictions",
+      "/features/ip-restrictions",
+      "/features/scrape",
+      "/features/batch-scrape",
+      "/features/crawl",
+      "/features/map",
+      "/features/search",
+      "/features/enhanced-mode",
+      "/features/proxies",
+      "/features/fast-scraping",
+      "/features/lockdown",
+      "/features/pii-redaction",
+      "/features/llm-extract",
+      "/features/extract",
+      "/features/change-tracking",
+      "/features/document-parsing",
+      "/advanced-scraping-guide",
+      "/partner-credits",
+      "/features/sso",
+      "/features/threat-protection"
+    ]
+  },
+  "built_at": "2026-10-31T02:52:31+00:00"
+}
