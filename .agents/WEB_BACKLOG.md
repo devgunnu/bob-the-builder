@@ -70,6 +70,7 @@ Each has an acceptance check.
 10. **Keyboard.** `j/k` moves through rows, `e` opens Export, `Esc` clears the selection.
 11. **Accessibility pass.** Focus rings on all controls, `aria-live` for Bob's chat messages, colour-contrast check on dim text. **Done.**
 12. **Landing polish.** Idle `sleep` pose after 60 s without input; new poses and memes go here, where the personality lives.
+13. **Performance.** Lazy-load sign-in and screens; keep Build row rendering smooth for large event streams. **Done.**
 
 ## D. Known gaps
 - Fonts load from Google Fonts; add local fallbacks if the venue wifi is bad.
