@@ -68,4 +68,8 @@ def get_llm(job: Job, role: Role) -> LLMClient:
     bedrock -> llm/bedrock.py (Converse, the job's BedrockAccess); openai_compatible -> llm/openai_compat.py (P1).
     """
     cfg = model_for(job, role)
-    raise NotImplementedError(f"A1 wave 1: LLM client for provider {cfg.provider!r}")
+    if cfg.provider == "bedrock":
+        from bob.llm.bedrock import BedrockClient
+
+        return BedrockClient(job, role, cfg)
+    raise NotImplementedError(f"provider {cfg.provider!r} is P1 (llm/openai_compat.py)")

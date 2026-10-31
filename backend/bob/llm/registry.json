@@ -1,0 +1,67 @@
+{
+  "_doc": "Model capabilities per model id prefix (D33, CONTRACTS section 3). Owner: A1. The region prefix of an inference profile id (global., us., eu., apac., jp., au., us-gov.) is removed before the match; the longest matching prefix wins. json_mode: tool = Converse toolConfig with a forced tool; native = Converse outputConfig.textFormat json_schema; prompt = JSON instruction + parse + one retry. cache = Converse cachePoint support; min_cache_tokens = minimum cached prefix. allows_temperature false = never send temperature/topP. extra_fields = additionalModelRequestFields for every call; role_extra_fields = extra fields per LLM role. Prices: USD per M tokens; null = unknown (role goes to CostSummary.price_unknown). Cache read/write tokens are priced at price_in_per_m times cache_read_mult / cache_write_mult. Verified with real Converse calls in us-east-1 on 2026-10-30: global.anthropic.claude-haiku-5-5, global.anthropic.claude-sonnet-5-5 (native JSON, cachePoint, no temperature, forced tool_choice rejected on Sonnet 5.5) and us.amazon.nova-2-lite-v1:0 (forced tool ok, no outputConfig, cachePoint ok).",
+  "default": {
+    "json_mode": "prompt",
+    "cache": false,
+    "min_cache_tokens": null,
+    "allows_temperature": true,
+    "max_tokens": 4096,
+    "extra_fields": {},
+    "role_extra_fields": {},
+    "price_in_per_m": null,
+    "price_out_per_m": null,
+    "cache_read_mult": 0.1,
+    "cache_write_mult": 1.25
+  },
+  "models": [
+    {
+      "prefix": "anthropic.claude-haiku-5-5",
+      "json_mode": "native",
+      "cache": true,
+      "min_cache_tokens": 512,
+      "allows_temperature": false,
+      "max_tokens": 16000,
+      "role_extra_fields": {"writer": {"output_config": {"effort": "low"}}, "fallback": {"output_config": {"effort": "low"}}},
+      "price_in_per_m": 0.10,
+      "price_out_per_m": 0.50
+    },
+    {
+      "prefix": "anthropic.claude-sonnet-5-5",
+      "json_mode": "native",
+      "cache": true,
+      "min_cache_tokens": 512,
+      "allows_temperature": false,
+      "max_tokens": 16000,
+      "role_extra_fields": {"writer": {"output_config": {"effort": "low"}}, "fallback": {"output_config": {"effort": "low"}}},
+      "price_in_per_m": 2.00,
+      "price_out_per_m": 10.00
+    },
+    {
+      "prefix": "anthropic.claude-opus-5-5",
+      "json_mode": "native",
+      "cache": true,
+      "min_cache_tokens": 512,
+      "allows_temperature": false,
+      "max_tokens": 16000,
+      "role_extra_fields": {"writer": {"output_config": {"effort": "low"}}, "fallback": {"output_config": {"effort": "low"}}},
+      "price_in_per_m": 4.00,
+      "price_out_per_m": 20.00
+    },
+    {
+      "prefix": "anthropic.claude",
+      "json_mode": "tool",
+      "cache": true,
+      "min_cache_tokens": 1024,
+      "allows_temperature": true,
+      "max_tokens": 8192
+    },
+    {
+      "prefix": "amazon.nova",
+      "json_mode": "tool",
+      "cache": true,
+      "min_cache_tokens": 1024,
+      "allows_temperature": true,
+      "max_tokens": 8192
+    }
+  ]
+}
