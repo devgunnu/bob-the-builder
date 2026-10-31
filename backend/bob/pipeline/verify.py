@@ -58,6 +58,7 @@ JUDGE_SCHEMA: dict = {
         "reason": {"type": "string"},
     },
     "required": ["verdict", "reason"],
+    "additionalProperties": False,  # native JSON mode needs it set explicitly
 }
 
 # ScaleDown Extract schema for the assistant reply (CONTRACTS section 4).
