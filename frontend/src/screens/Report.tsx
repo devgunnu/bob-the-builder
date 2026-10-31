@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import { motion } from "motion/react";
 import { Download, Loader2, ThumbsDown, ThumbsUp } from "lucide-react";
 import { api, ApiError } from "../api/client";
@@ -230,6 +230,7 @@ export default function ReportScreen() {
               </div>
               <QuickDownload jobId={id!} files={s.files} preset={preset} />
             </motion.div>
+            {s.status === "done" && <Resync jobId={id!} />}
 
             <div className="mb-4 flex gap-1 rounded-2xl bg-panel p-1.5" role="tablist">
               {TABS.map(([t, label]) => (
@@ -301,5 +302,33 @@ export default function ReportScreen() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+/** Re-fetch the sources and re-check the rows they changed (POST /jobs/{id}/resync). A quiet link, not a second primary action. */
+function Resync({ jobId }: { jobId: string }) {
+  const nav = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<ApiError | null>(null);
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.resync(jobId);
+      nav(`/jobs/${jobId}/build`);
+    } catch (e) {
+      setError(e as ApiError);
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="-mt-3 mb-5 text-[12.5px] text-dim">
+      Docs changed since this run?{" "}
+      <button onClick={run} disabled={busy} className="inline-flex items-center gap-1 text-bob-sky hover:underline disabled:opacity-50">
+        {busy && <Loader2 className="size-3 animate-spin" />} Check the sources again
+      </button>
+      <span className="hidden sm:inline"> · Bob re-checks only the rows whose sources changed.</span>
+      {error && <div className="mt-2"><ErrorBanner error={error} title="Couldn't start the re-check" /></div>}
+    </div>
   );
 }
