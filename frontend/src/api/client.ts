@@ -47,6 +47,9 @@ export class ApiError extends Error {
 function friendly(status: number, error: string): string {
   if (status === 412 && /hosting aws/i.test(error)) return "Bob could not access the hosting account's AWS services.";
   if (status === 412 && /hosting models/i.test(error)) return "Bob could not verify the configured models.";
+  // local mode: Bedrock runs on this machine's AWS credentials (there is no account to connect)
+  if (status === 412 && /connect aws/i.test(error)) return "Bob could not reach Bedrock with this machine's AWS credentials.";
+  if (status === 412 && /verify models/i.test(error)) return "Bob could not verify the configured models.";
   if (status === 412 && /model/i.test(error)) return "Verify your models before starting a job.";
   if (status === 429) return "You already have a job running. Wait for it to finish, then try again.";
   if (status === 409 && /approv/i.test(error)) return "This plan was already started or the job has stopped.";
