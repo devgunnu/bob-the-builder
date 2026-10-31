@@ -513,7 +513,7 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
         {/* next to the button, so the reason is on screen wherever the user pressed it */}
         {error && (
           <div ref={errorRef} className="mb-3 scroll-mt-4">
-            <ErrorBanner error={error} title={error.status === 412 ? "One step before you start" : error.status === 0 ? "Almost ready" : "Couldn't draft the plan"} />
+            <ErrorBanner error={error} title={error.status === 412 ? "Bob can't start yet" : error.status === 0 ? "Almost ready" : "Couldn't draft the plan"} />
           </div>
         )}
         <Button tone="yellow" className="w-full py-3 text-[16px]" busy={creating} disabled={!ready} onClick={create}>
