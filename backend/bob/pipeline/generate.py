@@ -207,7 +207,7 @@ async def topic_context(ctx: GenContext, value: str) -> TopicContext:
     pool = _topic_pool(ctx, members)
     if not pool:
         raise ValueError(f"topic {value!r} has no kept passages")
-    texts = await asyncio.gather(*(compress(ctx.chunks[c].text, job=ctx.job) for c in pool))
+    texts = await asyncio.gather(*(compress(ctx.chunks[c].text, job=ctx.job, prompt=ctx.job.spec.goal) for c in pool))
     chunks = [ctx.chunks[c] for c in pool]
     return TopicContext(
         value=value,

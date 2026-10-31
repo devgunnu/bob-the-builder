@@ -58,8 +58,8 @@ class Settings(BaseSettings):
 
     # ---------- provider keys ----------
     jev_api_key: str = _f("JEV_API_KEY", "")  # Jev API console key; direct Jev API (D34)
-    jev_base_url: str = _f("JEV_BASE_URL", "")  # no default: A2 confirms the base URL at the first call
-    jev_model: str = _f("JEV_MODEL", "typesafe/jev-1.13-20260917")
+    jev_base_url: str = _f("JEV_BASE_URL", "https://api.typesafe.ai")
+    jev_model: str = _f("JEV_MODEL", "jev-1.14.0")
     openrouter_api_key: str = _f("OPENROUTER_API_KEY", "")  # optional: only ScaleDown via OpenRouter
     scaledown_api_key: str = _f("SCALEDOWN_API_KEY", "")
     scaledown_base_url: str = _f("SCALEDOWN_BASE_URL", "https://api.scaledown.xyz")
@@ -73,6 +73,9 @@ class Settings(BaseSettings):
     scaledown_price_in_per_m: float = _f("SCALEDOWN_PRICE_IN_PER_M", 0.04)
 
     # ---------- verification and generation ----------
+    triage_injection_p: float = _f("TRIAGE_INJECTION_P", 0.5)
+    triage_pii_p: float = _f("TRIAGE_PII_P", 0.8)
+    triage_boilerplate_p: float = _f("TRIAGE_BOILERPLATE_P", 0.8)
     keep_p: float = _f("KEEP_P", 0.9)  # * JobOptions
     reject_p: float = _f("REJECT_P", 0.3)  # *
     audit_rate: float = _f("AUDIT_RATE", 0.02)  # *

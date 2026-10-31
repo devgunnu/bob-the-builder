@@ -189,7 +189,10 @@ async def test_spot_check_409_when_running(tmp_path):
         await o.export(job.id, "openai-chat", ["jsonl"])
 
 
-def test_stage_lookup_names_owner():
+def test_stage_lookup_names_owner(monkeypatch):
+    monkeypatch.setitem(
+        __import__("bob.orchestrator", fromlist=["_STAGES"])._STAGES, "generate", ("missing_a3_stage",)
+    )
     with pytest.raises(RuntimeError, match=r"generate \(A3\)"):
         stage("generate")
 

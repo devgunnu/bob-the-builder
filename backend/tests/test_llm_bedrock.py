@@ -97,3 +97,21 @@ async def test_nova_tool_mode_real(monkeypatch):
     assert "paris" in val["city"].lower()
     assert "writer" in ledger.price_unknown(job.id)  # no registry price for Nova: never guessed
     get_settings.cache_clear()
+
+
+def test_nested_schema_objects_are_strict_without_mutation():
+    from bob.llm.bedrock import _strip_schema
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "items": {
+                "type": "array",
+                "items": {"type": "object", "properties": {"name": {"type": "string"}}},
+            }
+        },
+    }
+    result = _strip_schema(schema)
+    assert result["additionalProperties"] is False
+    assert result["properties"]["items"]["items"]["additionalProperties"] is False
+    assert "additionalProperties" not in schema
