@@ -338,6 +338,7 @@ export interface PreviewResult {
 }
 export interface PublicConfig {
   auth: "none" | "cognito";
+  signup?: "open" | "invite"; // P1 self sign-up (BOB_SIGNUP); default invite only
   cognito?: { region: string; user_pool_id: string; client_id: string; domain: string };
 }
 export interface AwsSetup {

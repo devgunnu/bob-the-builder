@@ -17,7 +17,7 @@ const theme: Theme = {
 };
 
 /** Loads Amplify's stylesheet only when sign-in is used, inside a CSS layer so it can't override the app. */
-export default function CognitoGate({ children }: { children: ReactNode }) {
+export default function CognitoGate({ children, signup = false }: { children: ReactNode; signup?: boolean }) {
   const [ready, setReady] = useState(false);
   useEffect(() => {
     import("@aws-amplify/ui-react/styles.layer.css").then(() => setReady(true));
@@ -27,23 +27,23 @@ export default function CognitoGate({ children }: { children: ReactNode }) {
   return (
     <ThemeProvider theme={theme} colorMode="dark">
       <Authenticator.Provider>
-        <Gate>{children}</Gate>
+        <Gate signup={signup}>{children}</Gate>
       </Authenticator.Provider>
     </ThemeProvider>
   );
 }
 
-function Gate({ children }: { children: ReactNode }) {
+function Gate({ children, signup }: { children: ReactNode; signup: boolean }) {
   return (
     <Authenticator
-      hideSignUp
+      hideSignUp={!signup}
       loginMechanisms={["email"]}
       components={{
         Header: () => (
           <div className="flex flex-col items-center pb-4 pt-8 text-center">
             <Bob pose="wave" size={110} />
             <p className="mt-2 font-display text-2xl font-extrabold text-white">Sign in to Bob</p>
-            <p className="text-[13px] text-dim">Bob is invite only. Ask the team for an account.</p>
+            <p className="text-[13px] text-dim">{signup ? "Sign in, or create an account." : "Bob is invite only. Ask the team for an account."}</p>
           </div>
         ),
       }}
