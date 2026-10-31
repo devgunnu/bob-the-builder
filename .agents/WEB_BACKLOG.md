@@ -66,7 +66,7 @@ Each has an acceptance check.
 6. **Source scan line.** When a row is selected, a scan line sweeps the source block before the highlight appears.
 7. **Done:** real API client, SSE helper with replay de-duplication, all v4 screens.
 8. **Row history.** Build feed keeps the last 200 events; add a "load more" that pages `GET /jobs/{id}/rows`. **Done.**
-9. **Heatgrid cell click** on Build: open a drawer listing that cell's rows (`GET /rows?cell_id=`).
+9. **Heatgrid cell click** on Build: open a drawer listing that cell's rows (`GET /rows?cell_id=`). **Done.**
 10. **Keyboard.** `j/k` moves through rows, `e` opens Export, `Esc` clears the selection.
 11. **Accessibility pass.** Focus rings on all controls, `aria-live` for Bob's chat messages, colour-contrast check on dim text.
 12. **Landing polish.** Idle `sleep` pose after 60 s without input; new poses and memes go here, where the personality lives.
