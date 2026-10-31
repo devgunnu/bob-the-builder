@@ -16,7 +16,7 @@ const FALLBACK: Slide[] = [
   { kind: "pose", pose: "think", caption: "Bob reading row 4,812 of the terms of service" },
   { kind: "pose", pose: "idea", caption: "When the docs finally say what the default timeout is" },
   { kind: "pose", pose: "cheer", caption: "Zero hallucinations. Bob deserves a snack." },
-  { kind: "pose", pose: "wave", caption: "Bob saying goodbye to 312 rows that made stuff up" },
+  { kind: "pose", pose: "wave", caption: "Bob waving goodbye to the rows that made stuff up" },
   { kind: "pose", pose: "think", caption: "“Is this a fact or is this marketing?”" },
   { kind: "pose", pose: "hero", caption: "One cube of verified data, freshly built" },
 ];

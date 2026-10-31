@@ -1,0 +1,155 @@
+import { useEffect, useState } from "react";
+import { Link, useParams } from "react-router";
+import { ArrowLeft, CheckCircle2, ExternalLink, Gavel, Loader2, ScanEye, XCircle } from "lucide-react";
+import { api, ApiError } from "../api/client";
+import type { CheckResult, Row, SpanRef } from "../api/types";
+import { AppShell } from "../components/AppShell";
+import { ErrorBanner, Panel, caseLabel, usd } from "../components/ui";
+
+// Human labels for CONTRACTS section 4 check names.
+const CHECK_LABEL: Record<string, string> = {
+  format: "Format",
+  banned_phrases: "No banned phrases",
+  dedup: "Not a duplicate",
+  numbers: "Numbers appear in the source",
+  "extract.names": "No invented features (ScaleDown Extract)",
+  "jev.cell": "About the right topic",
+  "jev.quality": "Answer quality",
+  "jev.realistic": "Sounds like a real user",
+  "jev.supported": "Every claim is in the passages",
+  "jev.answers": "Resolves the question",
+  "jev.flags_gap": "Flags what the docs don't cover",
+  "jev.not_in_docs": "Docs really don't answer it",
+  "jev.abstains": "Says so and hands off, invents nothing",
+  "jev.contradicted": "Source contradicts the user's assumption",
+  "jev.corrects": "Politely corrects the assumption",
+};
+
+const TIER_LABEL = { 1: "Tier 1 · code", 2: "Tier 2 · Jev + ScaleDown", 3: "Tier 3 · judge" } as const;
+
+function Span({ s }: { s: SpanRef }) {
+  // CONTRACTS: start/end are offsets in the document; when they fall inside
+  // the span text, highlight that slice, otherwise the whole span is the citation.
+  const inside = s.start >= 0 && s.end > s.start && s.end <= s.text.length;
+  const [a, b] = inside ? [s.start, s.end] : [0, s.text.length];
+  const external = /^https?:\/\//.test(s.uri);
+  return (
+    <div className="rounded-xl border border-line bg-void p-3">
+      <div className="mb-1.5 flex items-center gap-2 text-[12px]">
+        <span className="truncate font-medium text-white/85">{s.title || s.uri}</span>
+        {external ? (
+          <a href={s.uri} target="_blank" rel="noreferrer" className="ml-auto flex shrink-0 items-center gap-1 text-bob-sky hover:underline">
+            open <ExternalLink className="size-3" />
+          </a>
+        ) : (
+          <span className="ml-auto shrink-0 font-mono text-[10.5px] text-dim">{s.uri}</span>
+        )}
+      </div>
+      <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-white/50">
+        {s.text.slice(0, a)}
+        <mark className="rounded bg-bob-yellow/20 px-0.5 text-bob-yellow">{s.text.slice(a, b)}</mark>
+        {s.text.slice(b)}
+      </p>
+    </div>
+  );
+}
+
+function Checks({ checks }: { checks: CheckResult[] }) {
+  const tiers = [1, 2, 3] as const;
+  return (
+    <div className="space-y-4">
+      {tiers.map((t) => {
+        const list = checks.filter((c) => c.tier === t);
+        if (!list.length) return null;
+        return (
+          <div key={t}>
+            <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-dim">{TIER_LABEL[t]}</div>
+            <ul className="space-y-1.5">
+              {list.map((c) => (
+                <li key={c.name} className="rounded-lg bg-white/[0.02] px-2.5 py-2">
+                  <div className="flex items-center gap-2 text-[13px]">
+                    {c.passed ? <CheckCircle2 className="size-4 shrink-0 text-bob-mint" /> : <XCircle className="size-4 shrink-0 text-rose-400" />}
+                    <span className="text-white/90">{CHECK_LABEL[c.name] ?? c.name}</span>
+                    {c.score !== null && <span className="ml-auto font-mono text-[11px] text-dim">{c.score.toFixed(2)}</span>}
+                  </div>
+                  {c.detail && <div className={`ml-6 mt-0.5 text-[12px] ${c.passed ? "text-dim" : "text-rose-300/90"}`}>{c.detail}</div>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export default function RowInspector() {
+  const { id, rowId } = useParams();
+  const [row, setRow] = useState<Row | null>(null);
+  const [error, setError] = useState<ApiError | null>(null);
+  useEffect(() => {
+    setRow(null);
+    api.row(id!, rowId!).then(setRow).catch(setError);
+  }, [id, rowId]);
+
+  const kept = row?.verdict === "kept";
+  const notInDocs = row?.checks.find((c) => c.name === "jev.not_in_docs");
+
+  return (
+    <AppShell pose={row ? (kept ? "idea" : "think") : "think"} title="Row">
+      <div className="mx-auto max-w-6xl px-4 py-5">
+        <Link to={`/jobs/${id}/build`} className="mb-3 inline-flex items-center gap-1 text-[12.5px] text-dim hover:text-white">
+          <ArrowLeft className="size-4" /> Back to the build
+        </Link>
+        <ErrorBanner error={error} title="Couldn't load this row" />
+        {!row && !error && <div className="grid place-items-center py-20 text-dim"><Loader2 className="size-6 animate-spin" /></div>}
+        {row && (
+          <>
+            <div className={`mb-4 flex flex-wrap items-center gap-2 rounded-2xl border px-4 py-3 ${kept ? "border-bob-mint/30 bg-bob-mint/[0.06]" : "border-rose-400/30 bg-rose-400/[0.06]"}`}>
+              {kept ? <CheckCircle2 className="size-5 text-bob-mint" /> : <XCircle className="size-5 text-rose-400" />}
+              <span className="font-display text-[17px] font-bold">{kept ? "Kept" : "Rejected"}</span>
+              {!kept && row.reject_reason && <span className="text-[13px] text-rose-200">{row.reject_reason}</span>}
+              <div className="ml-auto flex flex-wrap items-center gap-1.5 text-[11.5px]">
+                {Object.entries(row.coords).map(([k, v]) => (
+                  <span key={k} className="rounded-full border border-line px-2 py-0.5 text-dim">{k}: <span className="text-white/85">{caseLabel(v)}</span></span>
+                ))}
+                {row.routed_to_judge && <span className="flex items-center gap-1 rounded-full border border-bob-yellow/30 px-2 py-0.5 text-bob-yellow"><Gavel className="size-3" /> judged</span>}
+                {row.audited && <span className="flex items-center gap-1 rounded-full border border-bob-sky/30 px-2 py-0.5 text-bob-sky"><ScanEye className="size-3" /> audited</span>}
+                <span className="rounded-full border border-line px-2 py-0.5 font-mono text-dim">conf {row.confidence.toFixed(2)}</span>
+              </div>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+              <div className="space-y-4">
+                <Panel title="Conversation">
+                  <div className="space-y-2.5">
+                    {row.messages.map((m, i) => (
+                      <div key={i} className={m.role === "user" ? "flex justify-end" : "flex"}>
+                        <div className={`max-w-[88%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-[13.5px] leading-relaxed ${m.role === "user" ? "rounded-br-md bg-bob-blue text-white" : m.role === "assistant" ? "rounded-tl-md border border-line bg-panel-2 text-white/90" : "w-full border border-dashed border-line text-[12px] text-dim"}`}>
+                          {m.content}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Panel>
+                <Panel title={`Source${row.spans.length === 1 ? "" : "s"}`} action={<span className="text-[11px] text-dim">{row.spans.length} cited</span>}>
+                  {notInDocs && (
+                    <div className="mb-3 rounded-lg bg-bob-yellow/10 px-3 py-2 text-[12.5px] text-bob-yellow">
+                      Not in the docs: {notInDocs.detail}
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    {row.spans.length === 0 ? <div className="text-[12.5px] text-dim">No supporting spans recorded for this row.</div> : row.spans.map((s, i) => <Span key={i} s={s} />)}
+                  </div>
+                </Panel>
+              </div>
+              <Panel title="Checks" action={<span className="font-mono text-[11px] text-dim">{usd(row.cost_usd, 5)}</span>}>
+                <Checks checks={row.checks} />
+              </Panel>
+            </div>
+          </>
+        )}
+      </div>
+    </AppShell>
+  );
+}
