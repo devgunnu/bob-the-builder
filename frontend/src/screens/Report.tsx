@@ -151,13 +151,14 @@ function ExportPanel({ jobId, files, defaultPreset }: { jobId: string; files: Re
 function QuickDownload({ jobId, files, preset }: { jobId: string; files: Record<string, string>; preset: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
-  const existing = Object.keys(files).find((n) => n.startsWith(`${preset}/`) && n.includes("train") && n.endsWith(".jsonl"));
+  // dataset.zip holds both splits (train + eval), provenance and the manifest: the whole dataset.
+  const existing = Object.keys(files).find((n) => n === `${preset}/dataset.zip`);
   const go = async () => {
     setBusy(true);
     setError(null);
     try {
       const r = await api.export(jobId, preset, ["jsonl"]);
-      const name = Object.keys(r.files).find((n) => n.includes("train") && n.endsWith(".jsonl")) ?? Object.keys(r.files)[0];
+      const name = Object.keys(r.files).find((n) => n.endsWith("/dataset.zip")) ?? Object.keys(r.files)[0];
       if (name) await api.download(jobId, name);
     } catch (e) {
       setError(e as ApiError);
@@ -170,7 +171,7 @@ function QuickDownload({ jobId, files, preset }: { jobId: string; files: Record<
       <Button tone="yellow" className="w-full px-5 py-3 text-[16px] sm:w-auto" busy={busy} onClick={existing ? () => api.download(jobId, existing).catch(setError) : go}>
         <Download className="size-4" /> Download dataset
       </Button>
-      <span className="text-[11px] text-dim">{preset} · JSONL · train split</span>
+      <span className="text-[11px] text-dim">{preset} · train + eval JSONL, in one .zip</span>
       {error && <ErrorBanner error={error} title="Download failed" />}
     </div>
   );

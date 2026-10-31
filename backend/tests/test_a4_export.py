@@ -34,7 +34,19 @@ def test_export_openai_chat_layout_and_keys(tmp_path):
         "openai-chat/eval/eval.parquet",
         "openai-chat/provenance.parquet",
         "openai-chat/bob_manifest.json",
+        "openai-chat/dataset.zip",
     }
+    import zipfile
+
+    with zipfile.ZipFile(tmp_path / "openai-chat/dataset.zip") as zf:  # everything in one download
+        assert set(zf.namelist()) == {
+            "train/train.jsonl",
+            "train/train.parquet",
+            "eval/eval.jsonl",
+            "eval/eval.parquet",
+            "provenance.parquet",
+            "bob_manifest.json",
+        }
     for key, url in files.items():
         assert (tmp_path / key).is_file()
         assert url == f"/api/jobs/{job.id}/files/{key}"

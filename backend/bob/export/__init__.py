@@ -2,6 +2,7 @@
 
 `export()` writes one preset in the given formats under `<runs_dir>/<job_id>/export/<preset>/`:
   <split>/<split>.<ext>     one data file per folder (train 95% / eval 5%, stratified by cell)
+  dataset.zip               everything above for the preset, in one file (the main Download button)
   bob_manifest.json         job, plan, counts, cost, checks, model ids, effective settings
   provenance.parquet        row id, cell, coords, spans, checks, confidence (dpo: + row_id, mode, rejected_checks)
 It returns {key: download path}; key = path relative to the job export folder (e.g.
@@ -12,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import zipfile
 from collections import defaultdict
 from collections.abc import Callable, Hashable, Sequence
 from pathlib import Path
@@ -170,6 +172,12 @@ def export(
             files=sorted(files),
         ),
     )
+    # One download with everything for the preset: both splits, provenance and the manifest.
+    zip_path = base / "dataset.zip"
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for key in sorted(files):
+            zf.write(root / key, arcname=Path(key).relative_to(preset).as_posix())
+    add(zip_path)
     return files
 
 
