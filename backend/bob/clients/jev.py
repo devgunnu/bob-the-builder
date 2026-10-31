@@ -32,7 +32,8 @@ from typing import Any, Literal
 import httpx
 from pydantic import BaseModel
 
-from bob.config import get_settings, settings_for
+from bob.config import settings_for
+from bob.core import cache, ledger
 from bob.core.models import Job, Message
 
 log = logging.getLogger(__name__)
@@ -88,35 +89,10 @@ def _client() -> httpx.AsyncClient:
     return c
 
 
-async def _cache_get(endpoint: str, model: str, body: dict) -> dict | None:
-    if not get_settings().cache:
-        return None
-    try:
-        from bob.core import cache  # A1
-    except ImportError:
-        return None
-    return await cache.get(endpoint, model, body)
-
-
-async def _cache_put(endpoint: str, model: str, body: dict, response: dict) -> None:
-    if not get_settings().cache:
-        return
-    try:
-        from bob.core import cache  # A1
-    except ImportError:
-        return
-    await cache.put(endpoint, model, body, response)
-
-
 def record_cost(
     job: Job, bucket: str, *, in_tokens: int = 0, out_tokens: int = 0, usd: float | None, model: str
-):
-    """Ledger entry for one real call (A1 `core/ledger.py`, CONTRACTS section 7)."""
-    try:
-        from bob.core import ledger  # A1
-    except ImportError:
-        log.warning("bob.core.ledger is not there yet; cost of a %s call is not recorded", bucket)
-        return
+) -> None:
+    """Ledger entry for one real call (A1 `core/ledger.py`, CONTRACTS section 7). Cache hits cost nothing."""
     ledger.record(job.id, bucket, calls=1, in_tokens=in_tokens, out_tokens=out_tokens, usd=usd, model=model)
 
 
@@ -138,7 +114,7 @@ async def post_json(
 
     Returns (response JSON, from_cache). Non-retryable 4xx fails at once. Raises ClientError on failure.
     """
-    cached = await _cache_get(url, model, body)
+    cached = await cache.get(url, model, body)
     if cached is not None:
         return cached, True
     last: ClientError | None = None
@@ -157,7 +133,7 @@ async def post_json(
             except ValueError:
                 last = ClientError(service, 200, f"not JSON: {r.text[:300]}")
                 continue
-            await _cache_put(url, model, body, data)
+            await cache.put(url, model, body, data)
             return data, False
         last = ClientError(service, r.status_code, r.text[:500])
         if not _retryable(r.status_code):
@@ -178,6 +154,7 @@ async def emit_log(job: Job, level: str, message: str) -> None:
 
 async def note_fallback(job: Job, tag: str, reason: str) -> None:
     """Add `tag` (for example "jev->scaledown_classify") to the job's fallbacks_used; log the first switch."""
+    ledger.add_fallback(job.id, tag)  # the ledger is the source of CostSummary.fallbacks_used
     if tag in job.cost.fallbacks_used:
         return
     job.cost.fallbacks_used.append(tag)
