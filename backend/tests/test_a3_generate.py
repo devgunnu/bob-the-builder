@@ -273,3 +273,97 @@ async def test_real_writer_cache_read(real_env, monkeypatch):
         usages.append(u)
     assert usages[0].cache_write_tokens > 0 or usages[0].cache_read_tokens > 0
     assert usages[1].cache_read_tokens > 0
+
+
+async def test_real_generate_flawed_all_case_types(real_env):
+    """Real Writer rows (one per case type) -> concurrent generate_flawed -> one batched Writer call.
+
+    The input Row objects wrap real Writer output. They are not verified here (verify() is A4); `verdict`
+    is only a required model field."""
+    import asyncio
+
+    from bob.core.models import GenContext, Row, SpanRef
+    from bob.pipeline.generate import generate_flawed
+
+    job = _job(40)
+    docs, chunks, topic, ev = _material()
+    plan = await _real_plan(job, topic, chunks)
+    pool = chunks[:10]
+    if ev.chunk_id not in {c.id for c in pool}:
+        pool[-1] = next(c for c in chunks if c.id == ev.chunk_id)
+    by_id = {c.id: c for c in chunks}
+    tc = TopicContext(
+        value=topic.name,
+        prefix=build_prefix(topic.name, [topic], pool, [c.text for c in pool], docs),
+        pool=[c.id for c in pool],
+        doc_of={c.id: c.doc_id for c in pool},
+        evidence=premise_evidence([ev]),
+    )
+    rows = []
+    for case_type in CASE_TYPES:
+        cell = next(c for c in plan.cells if c.coords["case_type"] == case_type)
+        slots = assign_focus(tc, mix_schedule(cell, plan, settings_for(job).writer_batch, tc.multi_doc_ok))
+        msg = batch_message(plan, case_type, slots, strict=False, batch_no=1, round_no=1, avoid=[])
+        res = await call_writer(get_llm(job, "writer"), job, writer_system(plan, []), tc.prefix, msg)
+        r = res.rows[0]
+        spans = [
+            SpanRef(
+                doc_id=by_id[c].doc_id,
+                uri=by_id[c].uri,
+                title=docs[by_id[c].doc_id].title,
+                start=by_id[c].start,
+                end=by_id[c].end,
+                text=by_id[c].text,
+            )
+            for c in r["chunk_ids"]
+            if c in by_id
+        ]
+        rows.append(
+            Row(
+                id=f"row-{case_type}",
+                job_id=job.id,
+                cell_id=cell.id,
+                coords=slots[0].coords,
+                case_type=case_type,
+                round=1,
+                messages=[
+                    Message(role="user", content=r["user"]),
+                    Message(role="assistant", content=r["assistant"]),
+                ],
+                spans=spans,
+                checks=[],
+                confidence=0.0,
+                verdict="kept",
+                cost_usd=res.cost_usd / len(res.rows),
+                created_at=datetime.now(UTC),
+            )
+        )
+    events = []
+
+    async def emit(event_type: str, data: dict) -> None:
+        events.append((event_type, data))
+
+    ctx = GenContext(
+        job=job,
+        docs=docs,
+        chunks=by_id,
+        topics={topic.id: topic},
+        evidence=None,
+        retriever=None,
+        seeds=[],
+        emit=emit,
+    )
+    twins = await asyncio.gather(*(generate_flawed(r, ctx) for r in rows))
+    out = Path(get_settings().runs_dir) / "a3_samples"
+    out.mkdir(parents=True, exist_ok=True)
+    for row, twin in zip(rows, twins, strict=True):
+        assert twin.messages[0].content == row.messages[0].content
+        assert twin.messages[1].content.strip() and twin.messages[1].content != row.messages[1].content
+        assert twin.case_type == row.case_type and twin.coords == row.coords and twin.chunk_ids
+        sample = {
+            "user": row.messages[0].content,
+            "chosen": row.messages[1].content,
+            "rejected": twin.messages[1].content,
+        }
+        (out / f"flawed_{row.case_type}.json").write_text(json.dumps(sample, indent=2), encoding="utf-8")
+    assert len({t.cost_usd for t in twins}) == 1 and twins[0].cost_usd > 0  # one shared Writer call

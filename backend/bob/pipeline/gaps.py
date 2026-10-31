@@ -50,8 +50,10 @@ def cost_per_candidate(job: Job) -> float | None:
 
 
 def plan_gap_round(job: Job, cells: list[Cell]) -> list[tuple[Cell, int]]:
-    """(cell, n) for the next round, largest deficit first. The returned cells are copies with the new weight
-    (and mix weights); the caller stores them."""
+    """(cell, n) for the next round, largest deficit first.
+
+    The input cells are updated in place (hard-cell weight x 1.5, Cell.mix_weights when the model has it), so
+    the orchestrator's job.plan.cells keep the new values; the returned cells are those same objects."""
     s = settings_for(job)
     picks: list[tuple[Cell, int, int]] = []
     for c in cells:
@@ -67,7 +69,9 @@ def plan_gap_round(job: Job, cells: list[Cell]) -> list[tuple[Cell, int]]:
             n = math.ceil(n * HARD_BOOST)
         if "mix_weights" in type(c).model_fields:
             upd["mix_weights"] = boosted_mix_weights(job, c)
-        picks.append((c.model_copy(update=upd), n, deficit))
+        for k, v in upd.items():
+            setattr(c, k, v)
+        picks.append((c, n, deficit))
 
     remaining = BUDGET_SHARE * job.spec.budget_usd - job.cost.total_usd
     if remaining <= 0:

@@ -109,11 +109,13 @@ def mix_weights(cell: Cell, axis: Axis, multi_doc_ok: bool = True) -> dict[str, 
     return w
 
 
-def mix_schedule(cell: Cell, plan: Plan, n: int, multi_doc_ok: bool = True) -> list[dict[str, str]]:
+def mix_schedule(
+    cell: Cell, plan: Plan, n: int, multi_doc_ok: bool = True, offset: int = 0
+) -> list[dict[str, str]]:
     """All-4-axis coords for n rows of a cell. Each mix axis follows its weights; later axes shift by one
     step per cycle of the first axis, so equal-length axes do not always pair the same values."""
     mix = [a for a in plan.axes if a.role == "mix" and a.name not in cell.coords]
-    start = int(cell.id[:8], 16) % 101 if re.fullmatch(r"[0-9a-f]{8,}", cell.id[:8]) else 0
+    start = (int(cell.id[:8], 16) % 101 if re.fullmatch(r"[0-9a-f]{8}", cell.id[:8]) else 0) + offset
     seqs: list[list[str]] = []
     first_len = 1
     for k, axis in enumerate(mix):
@@ -437,12 +439,47 @@ async def _log(ctx: GenContext, level: str, message: str) -> None:
 
 
 # ---------- generate ----------
+@dataclass
+class _CellMemory:
+    """In-process memory of one cell across generate() calls (A1 calls generate once per WRITER_BATCH).
+
+    It only steers diversity (rotation offset, openings to avoid, exact-duplicate users). Losing it on a
+    restart is harmless: durable state stays in the Store."""
+
+    slots_done: int = 0
+    calls: int = 0
+    openings: list[str] = field(default_factory=list)
+    seen: set[str] = field(default_factory=set)
+
+
+_cell_memory: dict[tuple[str, str], _CellMemory] = {}
+_topic_tasks: dict[tuple[str, str, int], asyncio.Task] = {}
+
+
+async def cached_topic_context(ctx: GenContext, value: str) -> TopicContext:
+    """topic_context once per job, topic and GenContext (concurrent cells of one topic share it)."""
+    key = (ctx.job.id, value, id(ctx))
+    task = _topic_tasks.get(key)
+    if task is None or (task.done() and task.exception() is not None):
+        task = _topic_tasks[key] = asyncio.ensure_future(topic_context(ctx, value))
+    return await task
+
+
+def forget_job(job_id: str) -> None:
+    """Drop the in-process generation memory of a finished job."""
+    for k in [k for k in _cell_memory if k[0] == job_id]:
+        del _cell_memory[k]
+    for k in [k for k in _topic_tasks if k[0] == job_id]:
+        del _topic_tasks[k]
+
+
 async def generate(cell: Cell, plan: Plan, ctx: GenContext, n: int) -> list[Candidate]:
     """Up to n candidates for a cell, in batches of WRITER_BATCH different rows per Writer call.
 
-    Each batch rotates the mix values by their weights; every Candidate.coords has all 4 axes. Partial and
-    unanswerable rows carry absent_topic (checked against the Retriever); false_premise rows carry a real
-    premise_evidence_id. Dropped rows (bad JSON, missing fields) are not replaced in this call.
+    Each batch rotates the mix values by their weights, continuing the rotation of earlier calls for the
+    cell; every Candidate.coords has all 4 axes. Partial and unanswerable rows carry absent_topic (checked
+    against the Retriever); false_premise rows carry a real premise_evidence_id. Dropped rows (bad JSON,
+    missing fields, a present absent topic) are not replaced in this call.
     """
     if n <= 0 or not cell.enabled:
         return []
@@ -452,16 +489,18 @@ async def generate(cell: Cell, plan: Plan, ctx: GenContext, n: int) -> list[Cand
     llm = get_llm(job, "writer")
     system = writer_system(plan, ctx.seeds)
     strict = is_hard(cell)
+    mem = _cell_memory.setdefault((job.id, cell.id), _CellMemory())
+    offset = mem.slots_done
+    mem.slots_done += n
 
-    topic_values = {cell.coords["topic"]} if "topic" in cell.coords else set()
     contexts: dict[str, TopicContext] = {}
-    for v in sorted(topic_values):
-        contexts[v] = await topic_context(ctx, v)
+    if "topic" in cell.coords:
+        contexts[cell.coords["topic"]] = await cached_topic_context(ctx, cell.coords["topic"])
     multi_doc_ok = all(tc.multi_doc_ok for tc in contexts.values()) if contexts else True
-    coords = mix_schedule(cell, plan, n, multi_doc_ok)
+    coords = mix_schedule(cell, plan, n, multi_doc_ok, offset=offset)
     for c in coords:  # a mix topic axis (unusual CELL_AXES) needs its own context
         if c["topic"] not in contexts:
-            contexts[c["topic"]] = await topic_context(ctx, c["topic"])
+            contexts[c["topic"]] = await cached_topic_context(ctx, c["topic"])
 
     groups: dict[tuple[str, str], list[dict[str, str]]] = {}
     for c in coords:
@@ -469,26 +508,32 @@ async def generate(cell: Cell, plan: Plan, ctx: GenContext, n: int) -> list[Cand
             raise ValueError(f"cell {cell.id}: unknown case type {c.get('case_type')!r}")
         groups.setdefault((c["topic"], c["case_type"]), []).append(c)
 
-    jobs: list[tuple[str, list[Slot], TopicContext]] = []
-    start = (job.round * 7) + (int(cell.id[:6], 16) if re.fullmatch(r"[0-9a-f]{6}", cell.id[:6]) else 0)
+    work: list[tuple[str, list[Slot], TopicContext]] = []
+    base = int(cell.id[:6], 16) if re.fullmatch(r"[0-9a-f]{6}", cell.id[:6]) else 0
     for (topic, case_type), cs in groups.items():
         tc = contexts[topic]
-        slots = assign_focus(tc, cs, start)
         if case_type == "false_premise" and not tc.evidence:
             await _log(
                 ctx, "warn", f"No evidence items with a value in topic {topic!r}: no false_premise rows."
             )
             continue
+        slots = assign_focus(tc, cs, base + offset)
         for i in range(0, len(slots), batch):
-            jobs.append((case_type, slots[i : i + batch], tc))
+            work.append((case_type, slots[i : i + batch], tc))
 
-    seen: set[str] = set()
-    avoid: list[str] = []
     errors: list[Exception] = []
 
-    async def run(i: int, case_type: str, slots: list[Slot], tc: TopicContext) -> list[Candidate]:
+    async def run(case_type: str, slots: list[Slot], tc: TopicContext) -> list[Candidate]:
+        mem.calls += 1
+        call_no = mem.calls
         msg = batch_message(
-            plan, case_type, slots, strict=strict, batch_no=i + 1, round_no=job.round, avoid=list(avoid)
+            plan,
+            case_type,
+            slots,
+            strict=strict,
+            batch_no=call_no,
+            round_no=job.round,
+            avoid=list(mem.openings),
         )
         try:
             res = await call_writer(llm, job, system, tc.prefix, msg)
@@ -499,19 +544,18 @@ async def generate(cell: Cell, plan: Plan, ctx: GenContext, n: int) -> list[Cand
         if res is None:
             await _log(ctx, "warn", f"Writer batch dropped for cell {cell.id}: no valid JSON rows")
             return []
-        return build_candidates(ctx, cell, case_type, slots, res, tc, seen, i + 1)
+        cands = build_candidates(ctx, cell, case_type, slots, res, tc, mem.seen, call_no)
+        mem.openings = (mem.openings + [opening(c.messages[0].content) for c in cands])[-AVOID_OPENINGS:]
+        return cands
 
     out: list[Candidate] = []
-    if jobs:  # first batch alone: it writes the prompt cache and gives openings to avoid
-        first = await run(0, *jobs[0])
-        out += first
-        avoid += [opening(c.messages[0].content) for c in first]
-        rest = await asyncio.gather(*(run(i, *j) for i, j in enumerate(jobs[1:], 1)))
-        for r in rest:
+    if work:  # first batch alone: it writes the prompt cache and gives openings to avoid
+        out += await run(*work[0])
+        for r in await asyncio.gather(*(run(*w) for w in work[1:])):
             out += r
-    if jobs and not out and errors:
+    if work and not out and errors:
         raise errors[-1]
-    return out[: max(n, 0)] if len(out) > n else out
+    return out[:n]
 
 
 # ---------- DPO flawed twins (P1) ----------

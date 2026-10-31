@@ -15,7 +15,7 @@ from pathlib import Path
 
 from bob.config import EffectiveSettings, settings_for
 from bob.core.models import CASE_TYPES, DIFFICULTIES, Axis, Cell, Chunk, Job, Message, Plan, Topic
-from bob.llm.client import Role, Usage, get_llm, model_for
+from bob.llm.client import Role, Usage, current_job, get_llm, model_for
 from bob.llm.registry import caps_for
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
@@ -233,14 +233,15 @@ def _split_by_weight(cells: list[Cell], total: float) -> dict[str, float]:
     return {cid: total * w / wsum for cid, w in weights.items()}
 
 
-def allocate_targets(plan: Plan, *, job: Job) -> Plan:
+def allocate_targets(plan: Plan, *, job: Job | None = None) -> Plan:
     """Split plan.target_rows across the enabled cells by weight and CASE_MIX; each gets >= MIN_CELL_TARGET.
 
     When case_type is a cell axis, each case type gets its CASE_MIX share (renormalized over the case types
     that have an enabled cell), split by cell weight. Else the rows split by cell weight only. Integer
     rounding gives the remainder to the largest cells. Disabled cells get target 0.
+    `job` defaults to current_job() (set by run_job).
     """
-    s = settings_for(job)
+    s = settings_for(job or current_job())
     enabled = [c for c in plan.cells if c.enabled]
     total = plan.target_rows
     targets: dict[str, int] = {}
@@ -422,16 +423,17 @@ async def propose_plan(
     target_rows: int,
     budget_usd: float,
     *,
-    job: Job,
+    job: Job | None = None,
     chunks: dict[str, Chunk] | None = None,
 ) -> Plan:
     """One planner-role call -> Plan with cells over CELL_AXES, mix axes with weights, notes and est cost.
 
-    `job` (keyword-only): settings_for(job) and get_llm(job, "planner"). `chunks` (optional): lets the plan
+    `job` (keyword-only, default current_job()): settings_for(job) and get_llm(job, "planner"). `chunks` (optional): lets the plan
     count documents per topic (multi_doc rules) and use real chunk token counts in the estimate.
     """
     if not topics:
         raise ValueError("propose_plan needs at least one topic")
+    job = job or current_job()
     s = settings_for(job)
     topics = cap_topics(topics, s.max_topics)
     n_docs = len({c.doc_id for c in chunks.values()}) if chunks else None
