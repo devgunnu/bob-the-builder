@@ -7,7 +7,7 @@ import type { CostSummary, Job, Row, RowEvent } from "../api/types";
 import { useJobStream } from "../api/useJobStream";
 import { AppShell } from "../components/AppShell";
 import { Bob, type BobPose } from "../components/Bob";
-import { ConfirmButton, Empty, ErrorBanner, caseLabel, usd, useTitle } from "../components/ui";
+import { ConfirmButton, Empty, ErrorBanner, JobLoadError, caseLabel, usd, useTitle } from "../components/ui";
 import { Heatgrid, toGridCells } from "../components/viz/Heatgrid";
 
 // Time left from the recent rate of kept rows (visibility of system status).
@@ -304,10 +304,16 @@ export default function BuildScreen() {
   const ids = s.cost?.model_ids ?? {};
   const judgeIsWriter = !!ids.judge && ids.judge === ids.writer;
 
+  if (s.loadError)
+    return (
+      <AppShell pose="idle" step="build">
+        <JobLoadError error={s.loadError} />
+      </AppShell>
+    );
+
   return (
     <AppShell pose={pose} title={s.job?.spec.goal} step="build" status={s.status} hasReport={!!s.report}>
       <div className="mx-auto max-w-6xl space-y-4 px-4 py-6">
-        <ErrorBanner error={s.loadError} title="Couldn't load this job" />
         <ErrorBanner error={s.error} title="The build hit an error" />
         <ErrorBanner error={cancelErr} />
 

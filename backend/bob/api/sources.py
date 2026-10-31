@@ -62,6 +62,8 @@ async def _composio_call(coro: Any) -> Any:
         return await coro
     except composio.ConnectionNotFound as exc:
         raise not_found("connection not found") from exc
+    except composio.ComposioNotConfigured as exc:
+        raise ApiError(503, "not configured on this server", provider="composio", detail=str(exc)) from exc
     except composio.ComposioError as exc:
         raise ApiError(400, "connector error", provider="composio", detail=str(exc)) from exc
     except Exception as exc:  # SDK / network errors: show the provider's text
@@ -179,10 +181,16 @@ async def preview(spec: SourceSpec, user: User) -> dict[str, Any]:
     if spec.kind == "upload":
         docs, capped = await _preview_uploads(spec, user)
     elif spec.kind == "url":
+        from bob.connectors.firecrawl import FirecrawlNotConfigured
+
         try:
             docs, capped = await _preview_url(spec, deadline)
         except ApiError:
             raise
+        except FirecrawlNotConfigured as exc:
+            raise ApiError(
+                503, "not configured on this server", provider="firecrawl", detail=str(exc)
+            ) from exc
         except Exception as exc:
             raise ApiError(
                 502, "preview failed", provider="firecrawl", detail=f"{type(exc).__name__}: {exc}"

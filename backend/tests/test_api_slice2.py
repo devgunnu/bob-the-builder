@@ -339,3 +339,26 @@ async def test_openai_compatible_keys_are_501_not_500(client):
     r = await client.put("/api/me/models", json={**me["models"], "api_keys": {"writer": "sk-test"}})
     assert r.status_code == 501 and "not available yet" in r.json()["error"]
     assert "sk-test" not in r.text
+
+
+async def test_missing_provider_keys_are_503_not_configured(client, monkeypatch):
+    # A server without the Composio / Firecrawl keys answers 503 with the exact reason,
+    # not a 400 that blames the request or a 502 that blames the provider.
+    from bob.connectors import composio
+
+    monkeypatch.delenv("COMPOSIO_API_KEY", raising=False)
+    monkeypatch.delenv("FIRECRAWL_API_KEY", raising=False)
+    composio.client.cache_clear()
+    r = await client.get("/api/connectors")
+    assert r.status_code == 503
+    assert r.json() == {
+        "error": "not configured on this server",
+        "provider": "composio",
+        "detail": "COMPOSIO_API_KEY is not set",
+    }
+    r = await client.post(
+        "/api/sources/preview", json={"kind": "url", "url": "https://docs.firecrawl.dev/rate-limits"}
+    )
+    assert r.status_code == 503
+    assert r.json()["provider"] == "firecrawl" and r.json()["detail"] == "FIRECRAWL_API_KEY is not set"
+    composio.client.cache_clear()

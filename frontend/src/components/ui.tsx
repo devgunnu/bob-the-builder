@@ -58,6 +58,16 @@ export function ErrorBanner({ error, title = "Something went wrong" }: { error: 
   );
 }
 
+/** A job that can't be loaded (unknown id, another user's job, API down): the error and a way out, nothing else. */
+export function JobLoadError({ error }: { error: ApiError | Error }) {
+  return (
+    <div className="mx-auto max-w-3xl space-y-3 p-6">
+      <ErrorBanner error={error} title="Couldn't load this job" />
+      <Link to="/jobs" className="inline-block text-[13px] text-bob-sky hover:underline">See your jobs →</Link>
+    </div>
+  );
+}
+
 export function Empty({ children }: { children: ReactNode }) {
   return <div className="grid place-items-center p-8 text-center text-[13px] text-dim">{children}</div>;
 }
