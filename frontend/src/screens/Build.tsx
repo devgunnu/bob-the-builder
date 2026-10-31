@@ -28,6 +28,15 @@ function useEta(kept: number, target: number, finished: boolean): string | null 
 
 const LLM_ROLES = new Set(["writer", "planner", "judge", "fallback"]);
 
+function buildPose(stage: string | null, done: boolean, stopped: boolean): BobPose {
+  if (done) return "hero";
+  if (stopped) return "idle";
+  if (stage === "generate") return "type";
+  if (stage === "verify") return "stamp";
+  if (stage === "export") return "carry";
+  return "think";
+}
+
 // Cost per role, with the model id, "billed to your AWS account" for Bedrock roles and unknown-price badges.
 function CostDetails({ cost, job }: { cost: CostSummary; job: Job | null }) {
   const roles = Object.keys(cost.by_model).sort((a, b) => Number(LLM_ROLES.has(b)) - Number(LLM_ROLES.has(a)));
@@ -145,7 +154,7 @@ export default function BuildScreen() {
     return () => window.clearTimeout(t);
   }, [done]);
 
-  const pose: BobPose = cheer ? "cheer" : done ? "idle" : "think";
+  const pose: BobPose = cheer ? "cheer" : buildPose(s.lastStage, done, stopped);
   const plan = s.plan;
   const highlight = useMemo(() => new Set(s.round?.cells ?? []), [s.round]);
   const kept = s.counts.kept ?? 0;
@@ -178,7 +187,7 @@ export default function BuildScreen() {
         {/* one headline, one bar, one sentence */}
         <section className="rounded-2xl bg-panel p-5">
           <div className="flex flex-wrap items-center gap-4">
-            <Bob pose={done ? "hero" : stopped ? "idle" : "think"} size={64} float={false} still className="hidden shrink-0 sm:block" />
+            <Bob pose={pose} size={64} float={false} still className="hidden shrink-0 sm:block" />
             <div className="min-w-0 flex-1">
               <div className="font-display text-[34px] font-extrabold leading-none tabular-nums">
                 {kept.toLocaleString()} <span className="text-[18px] font-bold text-dim">of {target.toLocaleString()} rows kept</span>
