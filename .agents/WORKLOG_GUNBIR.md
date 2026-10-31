@@ -1,84 +1,116 @@
 # Gunbir work log (G1 API + Files, G2 Connectors)
 
 Running log of Gunbir's backend work. Newest entries at the top of the log.
-Frontend (G3, G4) is built in a separate session on branch `claude/bob-web`.
-**Working branch from 2026-10-31: `gunbir/integration`** = `main` + Aaditya's former `a1-core`, `a2-read`, `a3-plan-write`, `a4-verify-ship` + former `claude/bob-web` + `codex/infra-deployment` + our former `gunbir/g1-api` and `gunbir/g2-connectors`. Merged branches were deleted on GitHub except `codex/infra-deployment` (Aaditya's CodeBuild deploys from it). Remote branches left: `main`, `gunbir/integration`, `codex/infra-deployment`.
+**Working branch: `gunbir/integration`.** It holds everything: `main`, all of Aaditya's work (former `aaditya/a1-core`, `a2-read`, `a3-plan-write`, `a4-verify-ship`, plus `codex/infra-deployment`), the frontend (former `claude/bob-web`) and ours (former `gunbir/g1-api`, `gunbir/g2-connectors`). Merged branches were deleted on GitHub after checking each was fully contained. Remote branches left: `main`, `gunbir/integration`, `codex/infra-deployment` (kept because Aaditya's CodeBuild deploys from it).
 Source of truth stays `PLAN.md` and `CONTRACTS.md` (v4.1); this file records what is built, what is decided, and what is waiting on whom.
 
 ## Status
 
-| Part | Owner | Branch | State |
-|---|---|---|---|
-| 1. Smoke corpus (`demo/smoke/`) | G2 | `gunbir/g2-connectors` | Done |
-| 2. API slice 1 (parsers, uploads, auth, SSE, thin-path routes) | G1 | `gunbir/integration` | Done; runs on A1's real core; 44 G1/G2 tests pass |
-| 3. Firecrawl + Composio (Notion) connectors | G2 | `gunbir/integration` | Done; real crawl, real Notion browse + fetch |
-| 3b. Demo docs corpus (`demo/corpus/`, 25 pages) | G2 | `gunbir/integration` | Done |
-| 3c. Demo Notion wiki (6 fictional pages) | G2 | `gunbir/integration` | Done: seeded in Notion, cached to `demo/corpus/notion/` |
-| 4a. `/api/health` + container boot fix (`python-multipart`) | G1 | `gunbir/integration` | Done; container-style boot verified |
-| 4. API slice 2 (`/me/aws*`, `/me/models*`, `/connectors*`, preview, spot-check, export, files + `/url`, presets, resync 501) | G1 | `gunbir/integration` | Done: all contract routes, including `/uploads/presign` (P1) |
-| 5. Jira / Confluence, `sync.py` (P1; orchestrator resync needs `sync.py`) | G2 | | Later |
-| 6. Integration with the frontend | G1 + G3/G4 | | After 4 |
+| Part | Owner | State |
+|---|---|---|
+| 1. Smoke corpus (`demo/smoke/`: 5 pages + 10 seed Q&As) | G2 | Done |
+| 2. API slice 1 (parsers, uploads, auth, SSE, thin-path routes) | G1 | Done; runs on A1's real core |
+| 3. Firecrawl + Composio (Notion) connectors | G2 | Done; real crawl, real Notion browse + fetch |
+| 3b. Demo docs corpus (`demo/corpus/`, 25 pages) | G2 | Done |
+| 3c. Demo Notion wiki (6 fictional pages, in Notion + `demo/corpus/notion/`) | G2 | Done |
+| 4a. `/api/health` + container boot fix (`python-multipart`) | G1 | Done; container-style boot verified |
+| 4. API slice 2: every route in CONTRACTS §6, including `/uploads/presign` (P1) | G1 | Done (resync answers 501 until `sync.py`) |
+| 4b. Cloud fix: `bob/aws/blobs.py` import crash; SigV4 presigned uploads | G1 (in A5 files, with Gunbir's OK) | Done |
+| 5. `connectors/sync.py` (P1, for resync); Jira / Confluence / Drive (P1) | G2 | Next |
+| 6. End-to-end check with the frontend | G1 + G3/G4 | Next |
+| 7. Full real job (needs AWS credentials + Jev / ScaleDown keys) | all | Waiting on keys |
+
+Tests (G1/G2, 68): `test_api.py` 9, `test_api_slice2.py` 20, `test_sse.py` 12, `test_parsers.py` 9, `test_firecrawl.py` 6, `test_composio.py` 12. All pass. Full backend suite: 164 passed; the other failures need AWS / Jev / ScaleDown keys this machine does not have, plus one stale A1 test. Frontend `tsc -b && vite build` passes on the integration branch.
 
 ## Waiting on
 
 | From | What | Logged in |
 |---|---|---|
-| A1 | One stale test in `test_orchestrator.py` (`test_create_job_429_and_missing_stage_error`) assumes the G1 stage is missing | `CHANGES_REQUESTED.md` |
+| A1 | Stale test `test_create_job_429_and_missing_stage_error` (expects the G1 stage to be missing) | `CHANGES_REQUESTED.md` |
 | A1 | Optional: `_seeds` passes `owner_id=job.owner_id` to `read_upload` | `CHANGES_REQUESTED.md` |
-| A1 / team | Keys for a full local run: AWS credentials (Bedrock), `JEV_API_KEY`, `SCALEDOWN_API_KEY` (new names; contract §9 still says `OPENROUTER_API_KEY`) | |
+| A5 | Data bucket CORS: allow browser `PUT` (Content-Type, Content-Length) from `BOB_PUBLIC_URL` for presigned uploads | `CHANGES_REQUESTED.md` |
+| A5 | Point CodeBuild at `gunbir/integration` (or `main` after merging it); then `codex/infra-deployment` can be deleted | |
+| A1 / team | Keys for a full local run: AWS credentials (Bedrock), `JEV_API_KEY`, `SCALEDOWN_API_KEY` (contract §9 still says `OPENROUTER_API_KEY`) | |
+
+## API routes (G1, all under `/api`)
+
+| Route | Notes |
+|---|---|
+| `GET /ping`, `GET /config/public` | Open (no sign-in). `/ping` is the Lambda readiness check |
+| `GET /health` | One cheap real call per provider in parallel (15 s each); no fallbacks, no cache; keys redacted |
+| `GET /me`; `GET /me/aws/setup`, `GET /me/aws/template`, `PUT /me/aws`, `POST /me/aws/verify` | AWS connect flow (A1 `update_bedrock` / `verify_bedrock`) |
+| `PUT /me/models`, `POST /me/models/verify`, `GET /me/models/available` | Models per role; `available` lists Bedrock models + inference profiles through the caller's role (20 s cap) |
+| `POST /uploads` (6 MB), `POST /uploads/presign` (200 MB), `PUT /uploads/{id}/content` (local mode only) | Owner-scoped uploads; presign gives an S3 PUT in aws mode |
+| `GET /connectors`, `POST /connectors/{toolkit}/connect`, `GET .../status`, `GET .../browse` | Composio, per user (`bob-<id>`); redirect must be this app's origin |
+| `POST /sources/preview` | No job; 10 pages or 20 s, `capped` flag |
+| `POST /jobs` (412 / 429 from A1), `GET /jobs`, `GET /jobs/{id}`, `PUT /jobs/{id}/plan` (409 unless awaiting approval), `POST /jobs/{id}/cancel` | Every `/jobs/{id}/*` route 404s for another user's job |
+| `GET /jobs/{id}/events` | SSE: `retry: 1000`, `: ping` every 15 s, replay from `Last-Event-ID`, closes after 840 s |
+| `GET /jobs/{id}/rows`, `GET /jobs/{id}/rows/{row_id}`, `POST /jobs/{id}/rows/{row_id}/spot-check` | Spot-check 409 while a worker runs (A1) |
+| `GET /presets`, `POST /jobs/{id}/export`, `GET /jobs/{id}/files/{name:path}` + `/url` | Preset and format validated against A4; downloads only for names in `Job.files` |
+| `POST /jobs/{id}/resync` | 501 until `connectors/sync.py` lands |
+
+Errors everywhere: `{error, provider?, detail?}`; validation 422 `{error: "invalid request", detail}`; crashes 500 `{error: "internal error", detail}`.
 
 ## Decisions made (G1 / G2 scope)
 
 | Decision | Why |
 |---|---|
-| Smoke corpus = 5 support-style pages: `/billing`, `/rate-limits`, `/webhooks/overview`, `/webhooks/security`, `/features/key-restrictions` | Short pages full of real limits, settings and numbers, which the false-premise and `numbers` checks need. Feature pages (scrape, crawl) were 50k to 300k chars each. |
-| `clean_markdown()` strips docs-site chrome from Firecrawl output | Mintlify pages carry a ~100k-char JSON config blob, a chat-widget greeting, "Suggest edits" footers and heading anchor links after `only_main_content`. `/billing` went from 130k to 24k chars with no content lost. Moves into `connectors/firecrawl.py` in Part 3. |
+| Smoke corpus = 5 support-style pages: `/billing`, `/rate-limits`, `/webhooks/overview`, `/webhooks/security`, `/features/key-restrictions` | Short pages full of real limits, settings and numbers, which the false-premise and `numbers` checks need. Feature pages were 50k to 300k chars each. |
+| `clean_markdown()` (in `connectors/firecrawl.py`) strips docs-site chrome from Firecrawl output | Mintlify pages carry a ~100k-char JSON config blob, a chat-widget greeting, "Suggest edits" footers and heading anchor links after `only_main_content`. `/billing` went from 130k to 24k chars with no content lost. |
 | Firecrawl calls retry on rate limits (wait 15 s, 5 tries) | Our key is on the free plan: 10 req/min on scrape/map, 2 req/min on crawl, 1,000 credits/month. |
-| All A1 touch points in one G1 file, `api/deps.py` | Written before A1 existed; when A1 landed only `deps.py` (`get_settings()`), `sse.event_parts` (`Event.id`) and the error mapping changed. |
-| Routes no longer pre-check 412; app-wide handlers map A1's `PreconditionFailed` (412), `JobRunning` (409) and `RunnerBusy` (429) | One source of truth: the orchestrator decides. |
-| Uploads are owner-scoped: `.owner` marker per upload; `POST /jobs` returns 404 for another user's `upload_ids` / `seed_upload_id`; the upload connector re-checks the owner in the worker | Acceptance criterion (quality/acceptance.md): a second user must not use the first user's uploads. |
-| Demo corpus = curated list of 27 support paths checked against the real site map, first 25 under 60k chars | A blind crawl from the docs root returned quickstarts, use cases and API-reference stubs; a Firecrawl `prompt` crawl was too narrow (6 pages). The crawl connector keeps an optional `prompt`. |
-| Demo Notion wiki is fictional, written for the demo, under a parent page marked "(fictional)"; facts shared with the public docs match them exactly | Gives the dataset internal-only facts and real "not in docs" gaps, without passing as Firecrawl's real policy. |
-| Composio cannot create root-level Notion pages | Tool limitation ("must have a parent"), so one parent page must be made by hand. |
-| `build_corpus.py` caches only the demo wiki titles from Notion | A first run cached a personal page; it was deleted before any commit. |
-| `sse.py` and `parsers.py` import nothing from A1 at load time | So both are testable now, before A1 lands. |
-| Upload document URI = `upload://<upload_id>/<name>` (contract example shows `upload://<name>`) | Two uploads with the same file name would get the same `Document.id`. |
-| Upload ids must be 32 hex chars | A crafted id cannot escape the `runs/uploads/` prefix. |
-| `.json` / `.jsonl` uploads are accepted but refused as document sources | They are seed files (A1 `load_seeds`), not docs. |
-| CSV: markdown table up to 30 rows x 8 columns, else one `##` section per row | The chunker never splits inside a table, so a large table would become one giant chunk. |
-| HTML parser drops `script`, `style`, `nav`, `footer`, `button`, `form`, `svg` and empty links; prefers `<main>` / `<article>` | The live docs page went from 257 KB to 3 KB of clean content. |
-| `PUT /jobs/{id}/plan` returns 409 unless the job status is `awaiting_approval` | Not in the contract; prevents approving a plan twice or on a finished job. Frontend should handle the 409. |
-| `POST /jobs` checks `bedrock_verified_at` / `models_verified_at` in the route (412) and maps `RunnerBusy` to 429 | Contract §6 status rules. |
-| Error body everywhere: `{error, provider?, detail?}`; validation errors -> 422 `{error: "invalid request", detail}` | One shape for the frontend to show. |
-| No GZip middleware | It buffers the SSE stream. |
-| Composio Notion auth config `bob-notion-read` (`ac_ELz4KgTaZsVZ`) is Composio-managed OAuth restricted to 5 read-only tools | Bob only reads; a bug cannot edit or delete a user's pages. |
-| Notion fetch uses `NOTION_GET_PAGE_MARKDOWN` (one call per page); browse uses `NOTION_SEARCH_NOTION_PAGE`; both pinned to version `20261018_00` | Markdown in one call, no recursive block walk; a pinned version cannot change shape under us. |
-| Connections are created with `connected_accounts.link` (hosted `connect.composio.dev/link/...` page) | Composio retired `initiate` for managed OAuth (HTTP 400 "no longer supported"). |
-| `notion_to_markdown()` strips Notion-flavored markup (spans, columns, `<unknown/>`, `<empty-block/>`, `{color=...}`, empty to-dos) outside code fences | Found on the first real fetch; the tags would pollute chunks and checks. A real page went from 1,112 to 337 chars with all text kept. |
-| Every Composio call checks that the connection's `user_id` is `bob-<caller id>`; otherwise `ConnectionNotFound` | Per-user privacy (CONTRACTS §14); tested with a real call as another user. |
 | Firecrawl crawl excludes `*.md` paths, skips pages under 200 chars or HTTP >= 400, cancels the crawl on timeout or task cancel | Docs sites publish `.md` duplicates; no paying for pages nobody reads. |
-| Merged `gunbir/g1-api` into `gunbir/g2-connectors` (`c78e652`) | Connectors reuse `parsers.normalize_markdown`; one copy of shared code. |
-| Deployment: S3 + CloudFront for the UI (not Amplify Hosting) | Matches v4.1 (D25). `aws-amplify` is used only as the Cognito sign-in library in the frontend. |
+| Demo corpus = curated list of 27 support paths checked against the real site map, first 25 under 60k chars | A blind crawl from the docs root returned quickstarts, use cases and API-reference stubs; a Firecrawl `prompt` crawl was too narrow (6 pages). The crawl connector keeps an optional `prompt`. |
+| All A1 touch points in one G1 file, `api/deps.py` | Written before A1 existed; when A1 landed only `deps.py`, `sse.event_parts` and the error mapping changed. |
+| `sse.py` and `parsers.py` import nothing from A1 at load time | Testable on their own. |
+| `POST /jobs`: 412 / 429 come from A1 (`PreconditionFailed`, `RunnerBusy`), mapped app-wide with `JobRunning` (409) | One source of truth: the orchestrator decides. |
+| `PUT /jobs/{id}/plan` returns 409 unless the job is `awaiting_approval` | Not in the contract; prevents approving twice or on a finished job. |
+| Uploads are owner-scoped: `.owner` marker; `POST /jobs` and preview 404 for another user's upload or seed id; the upload connector re-checks in the worker | Acceptance criterion (quality/acceptance.md). |
+| Upload URI = `upload://<upload_id>/<name>`; upload ids must be 32 hex chars; `.json` / `.jsonl` accepted only as seed files | Unique document ids; no key escapes `runs/uploads/`; seeds are not docs. |
+| Parsers: CSV is a table up to 30 x 8, else one `##` section per row; HTML drops script/style/nav/footer/button/form/svg and empty links, prefers `<main>` / `<article>` | The chunker never splits a table; the live docs HTML went from 257 KB to 3 KB. |
+| Presigned uploads: SigV4 client signs `content-length;content-type;host`, 15 min; local mode returns this API's `PUT /uploads/{id}/content` | boto3's default SigV2 presign did not sign the size, so S3 would accept any size. Local mode has no 6 MB limit, so the frontend flow is the same in both modes. |
+| `/health` calls providers directly (Jev without its fallback chain, unique inputs so the cache never answers) | "ok" must mean that provider answered now. |
+| OAuth `redirect_url` must be a dev origin or `BOB_PUBLIC_URL` | No open redirect through Composio. |
+| Downloads only for names in `Job.files`, plus a path check; aws: 302 to a presigned GET | No path traversal; the frontend uses the `/url` route because a link cannot send the auth header. |
+| `/sources/preview` for URLs: Firecrawl map, then scrape up to 10 pages (5 in parallel) within the 20 s budget | A crawl is too slow to show anything in 20 s. |
+| Composio Notion auth config `bob-notion-read` (`ac_ELz4KgTaZsVZ`) is managed OAuth restricted to 5 read-only tools | Bob only reads; a bug cannot edit or delete a user's pages. |
+| Notion: browse `NOTION_SEARCH_NOTION_PAGE`, fetch `NOTION_GET_PAGE_MARKDOWN`, both pinned to `20261018_00`; connections via `connected_accounts.link` | Markdown in one call; pinned shape; Composio retired `initiate` for managed OAuth. |
+| `notion_to_markdown()` strips Notion markup and turns `<table>` blocks into markdown tables, outside code fences | Found on real fetches: tags polluted chunks, and flattened tables lost which value belongs to which row. |
+| Every Composio call checks the connection's `user_id` is `bob-<caller id>`, else 404 | Per-user privacy (CONTRACTS §14). |
+| Demo Notion wiki is fictional, under "Bob Demo – Support Wiki (fictional)"; facts shared with the public docs match them exactly. `seed_notion.py --create-parent-under` creates the parent when none is shared (Composio cannot create root-level pages); the create tool is enabled only during the run | Internal-only facts and real "not in docs" gaps, without passing as Firecrawl's real policy. |
+| `build_corpus.py` caches only the demo wiki titles from Notion | A first run cached a personal page; it was deleted before any commit. |
+| Ruff: lint with the project config in `backend/pyproject.toml`; format only our own files | A repo-wide format once rewrote an A3 file; that change was reverted. |
+| Branch cleanup: delete a branch only after checking it is fully contained in the pushed `gunbir/integration`; keep a branch a deploy pipeline uses | No lost work; no broken deploy. |
+| Deployment: S3 + CloudFront for the UI (not Amplify Hosting) | Matches v4.1 (D25). `aws-amplify` is only the Cognito sign-in library in the frontend. |
 
 ## How to run
 
-Local scratch environment (until A1 adds `backend/pyproject.toml`):
-
 ```bash
-uv venv .venv && VIRTUAL_ENV=.venv uv pip install firecrawl-py python-dotenv fastapi uvicorn pydantic pydantic-settings pypdf python-docx markdownify beautifulsoup4 "pyjwt[crypto]" httpx python-multipart pytest pytest-asyncio reportlab ruff
+cd backend && uv sync --extra dev
 ```
 
 ```bash
-cd backend && PYTHONPATH=. ../.venv/bin/python -m pytest -q tests/
+cd backend && ./run.sh   # API on :8000 (local mode, BOB_AUTH=none); the Vite dev server proxies /api
 ```
 
 ```bash
-.venv/bin/python demo/scrape_smoke.py   # re-scrape the smoke corpus; needs FIRECRAWL_API_KEY in .env
+cd backend && set -a && . ../.env && set +a && .venv/bin/python -m pytest -q tests/
 ```
 
-API (works once A1 core lands): `backend/run.sh` serves on `:8000`; the Vite dev server proxies `/api`.
+```bash
+backend/.venv/bin/python demo/build_corpus.py               # rebuild demo/corpus/ (Firecrawl, ~25 credits)
+backend/.venv/bin/python demo/build_corpus.py --notion-only # re-cache the Notion wiki
+backend/.venv/bin/python demo/seed_notion.py                # re-seed the Notion wiki (skips existing pages)
+```
+
+Keys in `.env` (never committed): `FIRECRAWL_API_KEY`, `COMPOSIO_API_KEY`, `COMPOSIO_USER_PREFIX=bob-`; a full job also needs AWS credentials, `JEV_API_KEY`, `SCALEDOWN_API_KEY`.
 
 ## Log
+
+### 2026-10-31: docs brought up to date (`gunbir/integration`)
+- Rewrote the top of this log: current status, waiting-on, a full API route table, decisions (stale rows replaced), how to run with A1's `pyproject.toml`.
+- `.agents/README.md`: "Build state" section (working branch, this log, change requests, quality folder).
+- `quality/workstreams.md`: G1 and G2 rows record verified state and evidence; other owners' rows untouched.
+- `CHANGES_REQUESTED.md`: the frontend's OAuth and `/url` / template requests marked done.
 
 ### 2026-10-31: branch cleanup, presigned uploads, S3 import fix (`gunbir/integration`, `0d5eeb9`)
 - Merged 2 new `codex/infra-deployment` commits (CodeBuild credential reuse, manual starts); pushed `gunbir/integration`; deleted `aaditya/a1-core`, `a2-read`, `a3-plan-write`, `a4-verify-ship` and `claude/bob-web` on GitHub after checking each is fully contained. Kept `codex/infra-deployment` (Aaditya's CodeBuild deploys from it).
@@ -87,7 +119,6 @@ API (works once A1 core lands): `backend/run.sh` serves on `:8000`; the Vite dev
 - `POST /uploads/presign` (200 MB cap, type check, owner + `.presign` markers) and `PUT /uploads/{id}/content` (local mode: size must match; 409 in aws mode, where the browser uploads to S3). `read_upload` hides both marker files.
 - Tests: local presign end to end, bad type 400, too big 413, size mismatch 400, other user 404, S3 URL signs size + type. Full suite: 164 passed (rest: missing AWS / Jev / ScaleDown keys + A1's stale test). Fresh-install boot: `/api/ping` 200.
 - Asked A5 (table): data bucket CORS must allow browser `PUT` from `BOB_PUBLIC_URL`.
-
 
 ### 2026-10-31: branches combined and cleaned, API slice 2 (`gunbir/integration`)
 - Merged `claude/bob-web` (sprites, row drawer, paged history, accessibility) and `codex/infra-deployment` (CloudShell deploy prep) cleanly. Combined test pass: backend 144 then 161 passed (all G1/G2 pass; the rest need AWS / Jev / ScaleDown keys, plus A1's one stale test); frontend `tsc -b && vite build` passes.
