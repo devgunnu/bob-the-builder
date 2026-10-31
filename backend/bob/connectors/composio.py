@@ -1,7 +1,7 @@
 """Composio connector (G2): connect, browse and fetch internal apps (Notion first).
 
 Every call is scoped to one Bob user: the Composio user id is
-`COMPOSIO_USER_PREFIX + user_id` (for example `bob-local`, `bob-<cognito sub>`),
+`COMPOSIO_USER_PREFIX + user_id` (for example `bob-local`),
 so one user never sees another user's connections (CONTRACTS §14).
 
 Auth configs are Composio-managed OAuth and restricted to read-only tools: Bob

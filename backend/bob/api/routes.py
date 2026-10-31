@@ -62,22 +62,6 @@ async def ping() -> dict[str, bool]:
     return {"ok": True}
 
 
-@router.get("/config/public")
-async def config_public() -> dict[str, Any]:
-    if settings.auth != "cognito":
-        return {"auth": "none"}
-    return {
-        "auth": "cognito",
-        "signup": settings.signup,  # P1: "open" shows the sign-up tab (BOB_SIGNUP)
-        "cognito": {
-            "region": settings.cognito_region,
-            "user_pool_id": settings.cognito_user_pool_id,
-            "client_id": settings.cognito_client_id,
-            "domain": settings.cognito_domain,
-        },
-    }
-
-
 @router.get("/health")
 async def health(user: User, orchestrator: Orch) -> dict[str, Any]:
     """One cheap real call per provider (bob.api.health). Needs a signed-in user."""

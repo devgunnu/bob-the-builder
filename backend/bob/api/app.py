@@ -7,7 +7,6 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
 from bob.api.account import router as account_router
-from bob.api.auth import check_auth_config
 from bob.api.deps import settings
 from bob.api.errors import (
     ApiError,
@@ -26,7 +25,6 @@ DEV_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
 def create_app() -> FastAPI:
-    check_auth_config()
     app = FastAPI(title="Bob API", docs_url="/api/docs", openapi_url="/api/openapi.json")
     origins = list(DEV_ORIGINS)
     if settings.public_url:
@@ -36,7 +34,7 @@ def create_app() -> FastAPI:
         allow_origins=origins,
         allow_credentials=False,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "Last-Event-ID"],
+        allow_headers=["Content-Type", "Last-Event-ID"],
     )
     # No GZip middleware: it buffers the SSE stream.
     app.add_exception_handler(ApiError, api_error_handler)

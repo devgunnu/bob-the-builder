@@ -1,4 +1,4 @@
-"""G1 API tests on the real app and A1's real local core (BOB_ENV=local, BOB_AUTH=none).
+"""G1 API tests on the real app and A1's real local core (BOB_ENV=local, one built-in user).
 
 No external services are called: uploads go to local Blobs, and job creation stops
 at the orchestrator's own 412 because the local user has not verified AWS access.
@@ -49,7 +49,7 @@ async def noop_progress(done: int, total: int, detail: str) -> None:
 
 async def test_open_routes(client):
     assert (await client.get("/api/ping")).json() == {"ok": True}
-    assert (await client.get("/api/config/public")).json() == {"auth": "none"}
+    assert (await client.get("/api/config/public")).status_code == 404  # no sign-in, no auth config
     me = (await client.get("/api/me")).json()
     assert me["id"] == "local" and me["external_id"]
 
