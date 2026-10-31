@@ -36,11 +36,13 @@ interface BobProps {
   pose?: BobPose;
   size?: number;
   float?: boolean;
+  /** Show one frame only (used inside the app, where motion stays minimal). */
+  still?: boolean;
   className?: string;
 }
 
-export function Bob({ pose = "idle", size = 160, float = true, className }: BobProps) {
-  const reduce = useReducedMotion();
+export function Bob({ pose = "idle", size = 160, float = true, still = false, className }: BobProps) {
+  const reduce = useReducedMotion() || still;
   const { frames, ms } = POSES[pose];
   const [i, setI] = useState(0);
 

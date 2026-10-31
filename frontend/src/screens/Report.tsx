@@ -208,18 +208,18 @@ export default function ReportScreen() {
   ];
 
   return (
-    <AppShell pose={r ? "cheer" : "think"} title={s.job?.spec.goal}>
+    <AppShell pose={r ? "hero" : "idle"} title={s.job?.spec.goal}>
       <div className="mx-auto max-w-5xl px-4 py-8">
         <ErrorBanner error={s.loadError} title="Couldn't load this job" />
         {!r ? (
           <Empty>
-            <Bob pose="think" size={120} />
+            <Bob pose="idle" size={110} float={false} still />
             <p className="mt-2">The report appears when the build finishes. <Link to={`/jobs/${id}/build`} className="text-bob-sky hover:underline">Watch the build</Link></p>
           </Empty>
         ) : (
           <>
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-6 flex flex-wrap items-center gap-5">
-              <Bob pose="cheer" size={88} />
+              <Bob pose="hero" size={88} float={false} still />
               <div className="min-w-0 flex-1">
                 <h1 className="font-display text-[30px] font-extrabold leading-tight">{kept.toLocaleString()} verified rows are ready</h1>
                 <p className="mt-1 text-[14px] text-white/70">

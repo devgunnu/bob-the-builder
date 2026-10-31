@@ -7,7 +7,6 @@ import type { Axis, Cell, Plan, StageName } from "../api/types";
 import { useJobStream, type JobStream } from "../api/useJobStream";
 import { AppShell } from "../components/AppShell";
 import { Bob } from "../components/Bob";
-import { MemeCarousel } from "../components/MemeCarousel";
 import { Button, ErrorBanner, Label, caseLabel, usd } from "../components/ui";
 
 const READ_STAGES: { id: StageName; label: string }[] = [
@@ -35,7 +34,7 @@ function ReadingView({ s, onCancel }: { s: JobStream; onCancel: () => void }) {
 
   return (
     <div className="mx-auto flex max-w-xl flex-col items-center px-4 py-12 text-center">
-      {failed ? <Bob pose="idle" size={140} /> : <MemeCarousel />}
+      <Bob pose={failed ? "idle" : "idea"} size={110} float={false} still />
       <h1 className="mt-4 font-display text-[26px] font-extrabold">{failed ? "Bob stopped reading" : "Bob is reading your sources"}</h1>
       <p className="mt-1 text-[14px] text-dim">{failed ? "See the error below." : `${cur.label}${p?.detail ? ` · ${p.detail}` : "…"}`}</p>
       {!failed && (
@@ -286,7 +285,7 @@ function PlanEditor({ s, jobId }: { s: JobStream; jobId: string }) {
 
       {draft.notes.length > 0 && (
         <div className="mb-4 flex gap-3 rounded-2xl bg-bob-yellow/[0.07] px-4 py-3">
-          <Bob pose="idea" size={40} float={false} />
+          <Bob pose="idea" size={40} float={false} still />
           <ul className="space-y-1 text-[13.5px] text-white/85">
             {draft.notes.slice(0, 3).map((n, i) => <li key={i}>{n}</li>)}
           </ul>

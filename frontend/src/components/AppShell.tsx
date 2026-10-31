@@ -46,7 +46,7 @@ export function AppShell({ pose = "idle", title, children }: { pose?: BobPose; t
     <div className="flex h-full flex-col bg-void text-white">
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-4">
         <Link to="/" className="flex items-center gap-2" aria-label="Bob home">
-          <Bob pose={pose} size={34} float={false} />
+          <Bob pose={pose} size={34} float={false} still />
           <span className="font-display text-[17px] font-extrabold tracking-tight">bob</span>
         </Link>
         {title && <span className="hidden min-w-0 truncate text-[13px] text-dim sm:block">/ {title}</span>}

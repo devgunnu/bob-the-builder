@@ -7,7 +7,6 @@ import type { RowEvent } from "../api/types";
 import { useJobStream } from "../api/useJobStream";
 import { AppShell } from "../components/AppShell";
 import type { BobPose } from "../components/Bob";
-import { MemeCarousel } from "../components/MemeCarousel";
 import { Empty, ErrorBanner, caseLabel, usd } from "../components/ui";
 import { Heatgrid, toGridCells } from "../components/viz/Heatgrid";
 
@@ -168,7 +167,7 @@ export default function BuildScreen() {
                 </button>
               )}
             </div>
-            {plan ? <Heatgrid axes={plan.axes} cells={toGridCells(s.cells)} highlight={highlight} filters={filters} /> : <Empty><MemeCarousel compact /></Empty>}
+            {plan ? <Heatgrid axes={plan.axes} cells={toGridCells(s.cells)} highlight={highlight} filters={filters} /> : <Empty>The coverage map appears once the plan is approved.</Empty>}
           </section>
           <RowFeed rows={s.rows} jobId={id!} kept={kept} rejected={s.counts.rejected ?? 0} />
         </div>
