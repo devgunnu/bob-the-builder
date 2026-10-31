@@ -58,7 +58,7 @@ Ideas (data jokes, keep them kind):
 
 Each has an acceptance check.
 
-1. **Bob dives into the bar** (needs `dive` pose). During `blackout`, Bob jumps from the landing header into the bar before the morph. *Done when:* visible in the 2.1 s blackout, no layout jump.
+1. **Bob dives into the bar** (needs `dive` pose). During `blackout`, Bob jumps from the landing header into the bar before the morph. *Done when:* visible in the 2.1 s blackout, no layout jump. **Done.**
 2. **Stage-aware Bob (still frames only).** Swap the still AppShell / reading-screen pose by `lastStage` (`read` for fetch/triage/evidence, `type` for generate, `stamp` for verify, `carry` for export). No loops inside the app (UX_NOTES rule 7). *Done when:* Plan and Build pass the pose from the stream. **Done.**
 3. **Whole-page drag and drop** on the landing page: dropping files shows a glowing drop zone and attaches them to the composer. *Done when:* files appear as chips in the composer.
 4. **Cubes assemble on verify.** A small cube pile next to the Kept counter grows as kept rows arrive; rejected rows show a cracked cube falling away. *Done when:* smooth at 30 rows/s.
@@ -69,7 +69,7 @@ Each has an acceptance check.
 9. **Heatgrid cell click** on Build: open a drawer listing that cell's rows (`GET /rows?cell_id=`). **Done.**
 10. **Keyboard.** `j/k` moves through rows, `e` opens Export, `Esc` clears the selection.
 11. **Accessibility pass.** Focus rings on all controls, `aria-live` for Bob's chat messages, colour-contrast check on dim text. **Done.**
-12. **Landing polish.** Idle `sleep` pose after 60 s without input; new poses and memes go here, where the personality lives.
+12. **Landing polish.** Idle `sleep` pose after 60 s without input; new poses and memes go here, where the personality lives. **Done.**
 13. **Performance.** Lazy-load sign-in and screens; keep Build row rendering smooth for large event streams. **Done.**
 
 ## D. Known gaps

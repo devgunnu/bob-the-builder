@@ -174,7 +174,7 @@ export function LandingBackdrop() {
   );
 }
 
-export function LandingHeader() {
+export function LandingHeader({ sleeping = false }: { sleeping?: boolean }) {
   return (
     <motion.div
       className="mb-7 flex flex-col items-center text-center"
@@ -183,7 +183,7 @@ export function LandingHeader() {
       exit={{ opacity: 0, y: -40, scale: 0.9, transition: { duration: 0.45 } }}
       transition={{ duration: 0.7, delay: 0.1 }}
     >
-      <Bob pose="wave" size={150} />
+      <Bob pose={sleeping ? "sleep" : "wave"} size={150} float={!sleeping} />
       <h1 className="mt-1 font-display text-[34px] font-extrabold leading-none tracking-tight text-bob-navy sm:text-[44px]">
         What should Bob build?
       </h1>
