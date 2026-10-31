@@ -14,7 +14,8 @@ Source of truth stays `PLAN.md` and `CONTRACTS.md` (v4.1); this file records wha
 | 3. Firecrawl + Composio (Notion) connectors | G2 | `gunbir/integration` | Done; real crawl, real Notion browse + fetch |
 | 3b. Demo docs corpus (`demo/corpus/`, 25 pages) | G2 | `gunbir/integration` | Done |
 | 3c. Demo Notion wiki (6 fictional pages) | G2 | `gunbir/integration` | Drafted + seed script; waiting on one parent page in Notion |
-| 4. API slice 2 (health, `/me/aws*`, `/me/models*`, `/connectors*`, preview, spot-check, export, files, presets) | G1 | | Next |
+| 4a. `/api/health` + container boot fix (`python-multipart`) | G1 | `gunbir/integration` | Done; container-style boot verified |
+| 4. API slice 2 (`/me/aws*`, `/me/models*`, `/connectors*`, preview, spot-check, export, files + `/url`, presets) | G1 | | Next |
 | 5. Jira / Confluence, `sync.py` (P1; orchestrator resync needs `sync.py`) | G2 | | Later |
 | 6. Integration with the frontend | G1 + G3/G4 | | After 4 |
 
@@ -23,8 +24,7 @@ Source of truth stays `PLAN.md` and `CONTRACTS.md` (v4.1); this file records wha
 | From | What | Logged in |
 |---|---|---|
 | Gunbir | Create Notion page "Bob Demo – Support Wiki (fictional)" and share it with the Composio connection; then `demo/seed_notion.py` creates the 6 pages and `demo/build_corpus.py --notion-only` caches them | |
-| A1 (Aaditya) | Add `python-multipart` to `pyproject.toml` (uploads fail without it); dev: `reportlab` | `CHANGES_REQUESTED.md` |
-| A1 | Two stale tests in `test_orchestrator.py` (`test_create_job_429_and_missing_stage_error`, `test_stage_lookup_names_owner`) assume G1/A3 stages are missing | `CHANGES_REQUESTED.md` |
+| A1 | One stale test in `test_orchestrator.py` (`test_create_job_429_and_missing_stage_error`) assumes the G1 stage is missing | `CHANGES_REQUESTED.md` |
 | A1 | Optional: `_seeds` passes `owner_id=job.owner_id` to `read_upload` | `CHANGES_REQUESTED.md` |
 | A1 / team | Keys for a full local run: AWS credentials (Bedrock), `JEV_API_KEY`, `SCALEDOWN_API_KEY` (new names; contract §9 still says `OPENROUTER_API_KEY`) | |
 
@@ -81,6 +81,14 @@ API (works once A1 core lands): `backend/run.sh` serves on `:8000`; the Vite dev
 
 ## Log
 
+### 2026-10-31: cleared the deploy path for A5 (`gunbir/integration`, `d4448fe`)
+- Merged Aaditya's latest `a1-core` (his own integration of A2/A3/A4 + `c3a260f`: new model fields `Cell.mix_weights/mix_kept`, `CostSummary.by_purpose`, `Row.chunk_ids/absent_topic/premise_evidence_id`; Jev + triage config defaults). Table conflict resolved by row, keeping his "done" statuses.
+- **Deploy blocker found and fixed:** a clean `pip install ./backend` (the Dockerfile step) gave an app that crashed at import (FastAPI needs `python-multipart` for `POST /uploads`), so the Lambda readiness check on `/api/ping` could never pass. Added `python-multipart` (+ dev `reportlab`) with `uv add`; pyproject + uv.lock updated.
+- `GET /api/health` (`api/health.py`): parallel real checks with per-check 15 s timeouts, no fallbacks, no cache, keys redacted. Real local result in 2 s: firecrawl ok, composio ok; bedrock / jev / scaledown show their exact errors (no local AWS or Jev/ScaleDown keys).
+- 500 catch-all keeps the `{error, detail}` shape (frontend ask).
+- Verified like the container: fresh install from pyproject, `uvicorn bob.api.app:app --port 8080` with `BOB_AUTH=cognito`: `/api/ping` 200, `/api/config/public` 200, `/api/health` and `/api/me` 401 without a token.
+- Answered the frontend's 5 requests in `CHANGES_REQUESTED.md`. 47 G1/G2 tests pass.
+
 ### 2026-10-31: integration branch, A1 core adoption, demo corpus (`gunbir/integration`)
 - Merged `aaditya/a1-core` into `gunbir/g2-connectors` (`2fd398e`), then created `gunbir/integration` and merged the latest `a1-core` (AWS adapters, Dockerfile, CDK, quality workbench), `a2-read`, `a3-plan-write`, `a4-verify-ship` and `claude/bob-web`. Only conflicts: the `CHANGES_REQUESTED.md` table (kept every row) and `.gitignore` (union).
 - Adapted G1 to A1's real code: `get_settings()`, `Event.id`, error handlers for `PreconditionFailed` / `JobRunning` / `RunnerBusy`. The orchestrator calls `fetch_documents(..., user_id=job.owner_id)` and `read_upload(upload_id)` exactly as G1 implements them.
@@ -120,6 +128,6 @@ API (works once A1 core lands): `backend/run.sh` serves on `:8000`; the Vite dev
 
 ## Next
 1. Seed the demo Notion wiki once the parent page exists; cache it to `demo/corpus/notion/`.
-2. API slice 2: `/health`, `/me/aws*`, `/me/models*`, `/connectors*` (on `connectors/composio.py`), `/sources/preview` (10 pages / 20 s cap), spot-check, export, files + `/url`, presets.
+2. API slice 2: `/me/aws*`, `/me/models*`, `/connectors*` (on `connectors/composio.py`), `/sources/preview` (10 pages / 20 s cap), spot-check, export, files + `/url`, presets.
 3. `connectors/sync.py` (P1) so A1's resync can run.
 4. Frontend integration with the `claude/bob-web` session.
