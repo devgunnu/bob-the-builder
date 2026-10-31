@@ -2,7 +2,7 @@
 
 Running log of Gunbir's backend work. Newest entries at the top of the log.
 Frontend (G3, G4) is built in a separate session on branch `claude/bob-web`.
-**Working branch from 2026-10-31: `gunbir/integration`** = `main` + all of Aaditya's branches (`a1-core`, `a2-read`, `a3-plan-write`, `a4-verify-ship`) + `gunbir/g1-api` + `gunbir/g2-connectors` + `claude/bob-web`.
+**Working branch from 2026-10-31: `gunbir/integration`** = `main` + all of Aaditya's branches (`a1-core`, `a2-read`, `a3-plan-write`, `a4-verify-ship`) + `claude/bob-web` + `codex/infra-deployment` + our former `gunbir/g1-api` and `gunbir/g2-connectors` (both deleted after merging).
 Source of truth stays `PLAN.md` and `CONTRACTS.md` (v4.1); this file records what is built, what is decided, and what is waiting on whom.
 
 ## Status
@@ -15,7 +15,7 @@ Source of truth stays `PLAN.md` and `CONTRACTS.md` (v4.1); this file records wha
 | 3b. Demo docs corpus (`demo/corpus/`, 25 pages) | G2 | `gunbir/integration` | Done |
 | 3c. Demo Notion wiki (6 fictional pages) | G2 | `gunbir/integration` | Done: seeded in Notion, cached to `demo/corpus/notion/` |
 | 4a. `/api/health` + container boot fix (`python-multipart`) | G1 | `gunbir/integration` | Done; container-style boot verified |
-| 4. API slice 2 (`/me/aws*`, `/me/models*`, `/connectors*`, preview, spot-check, export, files + `/url`, presets) | G1 | | Next |
+| 4. API slice 2 (`/me/aws*`, `/me/models*`, `/connectors*`, preview, spot-check, export, files + `/url`, presets, resync 501) | G1 | `gunbir/integration` | Done: all 30 contract routes; `/uploads/presign` (P1) waits on `Blobs.put_url` |
 | 5. Jira / Confluence, `sync.py` (P1; orchestrator resync needs `sync.py`) | G2 | | Later |
 | 6. Integration with the frontend | G1 + G3/G4 | | After 4 |
 
@@ -80,6 +80,14 @@ API (works once A1 core lands): `backend/run.sh` serves on `:8000`; the Vite dev
 
 ## Log
 
+### 2026-10-31: branches combined and cleaned, API slice 2 (`gunbir/integration`)
+- Merged `claude/bob-web` (sprites, row drawer, paged history, accessibility) and `codex/infra-deployment` (CloudShell deploy prep) cleanly. Combined test pass: backend 144 then 161 passed (all G1/G2 pass; the rest need AWS / Jev / ScaleDown keys, plus A1's one stale test); frontend `tsc -b && vite build` passes.
+- Deleted `gunbir/g1-api` and `gunbir/g2-connectors` locally and on GitHub after checking both are fully contained in `gunbir/integration`. Aaditya's branches, `claude/bob-web` and `codex/infra-deployment` are also fully contained; left for their owners to delete.
+- API slice 2 (`api/account.py`, `api/sources.py`, `api/routes.py`): `/me/aws/setup`, `/me/aws/template` (image path, then repo copy), `PUT /me/aws`, `POST /me/aws/verify`, `PUT /me/models` (+ optional `api_keys`, never returned), `POST /me/models/verify`, `GET /me/models/available` (Bedrock foundation models + inference profiles through the caller's role, 20 s cap), `/connectors`, `/connectors/{toolkit}/connect|status|browse`, `POST /sources/preview` (10 pages / 20 s, `capped`), `/presets`, spot-check, export (preset + format validated against A4), `/files/{name:path}` (302 to presigned URL in aws, stream locally) + `/url`, `POST /resync` (501 until `sync.py`).
+- Safety: OAuth `redirect_url` must be our own origin (no open redirect); downloads only for names in `Job.files` plus a path check; every job route 404s for another user; preview checks upload owners.
+- `composio.fetch_page()` shared by job fetch and preview.
+- `tests/test_api_slice2.py`: 17 tests, real STS / Bedrock / Composio / Notion / Firecrawl calls where keys exist.
+
 ### 2026-10-31: demo Notion wiki seeded (`gunbir/integration`)
 - `demo/seed_notion.py --create-parent-under "Weekly To-do List"`: Composio cannot create root-level pages, so the script created the parent "Bob Demo – Support Wiki (fictional)" (`40a41e04-143a-81fc-b9ae-c9bdf9e107f4`) under the one page the connection could see, then the 6 pages under it. The create tool was enabled only for the run; confirmed afterwards that the auth config is back to the 5 read-only tools. The parent can be moved to the top level in Notion at any time.
 - **Bug found and fixed:** Notion returns tables as `<table><tr><td>`; `notion_to_markdown` stripped the tags and put every cell on its own line, losing which value belongs to which row. It now turns Notion tables into markdown tables (outside code fences, `|` escaped). New test with the real structure.
@@ -131,6 +139,6 @@ API (works once A1 core lands): `backend/run.sh` serves on `:8000`; the Vite dev
 - About 20 Firecrawl credits used. `.env` holds `FIRECRAWL_API_KEY`; it is gitignored and never staged.
 
 ## Next
-1. API slice 2: `/me/aws*`, `/me/models*`, `/connectors*` (on `connectors/composio.py`), `/sources/preview` (10 pages / 20 s cap), spot-check, export, files + `/url`, presets.
-2. `connectors/sync.py` (P1) so A1's resync can run.
-3. Frontend integration with the `claude/bob-web` session.
+1. `connectors/sync.py` (P1) so A1's resync can run (the route returns 501 until then).
+2. `POST /uploads/presign` once `Blobs.put_url` exists. so A1's resync can run.
+3. Frontend integration (all routes the frontend calls now exist) with the `claude/bob-web` session.

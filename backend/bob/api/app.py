@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
+from bob.api.account import router as account_router
 from bob.api.auth import check_auth_config
 from bob.api.deps import settings
 from bob.api.errors import (
@@ -17,6 +18,7 @@ from bob.api.errors import (
     validation_error_handler,
 )
 from bob.api.routes import router
+from bob.api.sources import router as sources_router
 from bob.core.runner import RunnerBusy
 from bob.orchestrator import JobRunning, PreconditionFailed
 
@@ -44,6 +46,8 @@ def create_app() -> FastAPI:
     app.add_exception_handler(RunnerBusy, runner_busy_handler)
     app.add_exception_handler(Exception, unexpected_error_handler)
     app.include_router(router, prefix="/api")
+    app.include_router(account_router, prefix="/api")
+    app.include_router(sources_router, prefix="/api")
     return app
 
 

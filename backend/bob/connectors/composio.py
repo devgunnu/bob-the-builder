@@ -296,12 +296,42 @@ async def browse(toolkit: str, account_id: str, q: str, *, user_id: str) -> list
     return items
 
 
+@dataclass(frozen=True)
+class FetchedPage:
+    page_id: str
+    uri: str
+    title: str
+    text: str
+    truncated: bool
+    unknown_blocks: int
+
+
+async def fetch_page(
+    toolkit: str, account_id: str, page_id: str, *, user_id: str, title: str | None = None
+) -> FetchedPage:
+    """One page as clean markdown. The caller has already checked that the account is the user's."""
+    tools = toolkit_tools(toolkit)
+    page_id = notion_page_id(page_id)
+    data = await _execute(
+        tools.fetch, {"page_id": page_id}, account_id=account_id, user_id=user_id, version=tools.version
+    )
+    text = notion_to_markdown(data.get("markdown") or "")
+    return FetchedPage(
+        page_id=page_id,
+        uri=f"notion://{page_id}",
+        title=title or _first_heading(text) or "Untitled",
+        text=text,
+        truncated=bool(data.get("truncated")),
+        unknown_blocks=len(data.get("unknown_block_ids") or []),
+    )
+
+
 async def fetch(spec: SourceSpec, job_id: str, progress: Progress, *, user_id: str) -> list[Document]:
     """kind="composio": fetch the selected pages as Documents (uri notion://<page_id>)."""
     from bob.core.models import Document
 
     toolkit = spec.toolkit or ""
-    tools = toolkit_tools(toolkit)
+    toolkit_tools(toolkit)  # clear error for an unsupported toolkit before any call
     account_id = spec.connected_account_id
     if not account_id:
         raise ComposioError(f"{toolkit} source has no connected_account_id")
@@ -316,35 +346,26 @@ async def fetch(spec: SourceSpec, job_id: str, progress: Progress, *, user_id: s
     documents: list[Document] = []
     await progress(0, len(page_ids), f"fetching {len(page_ids)} {toolkit} pages")
     for index, page_id in enumerate(page_ids, start=1):
-        data = await _execute(
-            tools.fetch,
-            {"page_id": page_id},
-            account_id=account_id,
-            user_id=user_id,
-            version=tools.version,
-        )
-        text = notion_to_markdown(data.get("markdown") or "")
-        uri = f"notion://{page_id}"
-        title = titles.get(page_id) or _first_heading(text) or "Untitled"
-        if text:
+        page = await fetch_page(toolkit, account_id, page_id, user_id=user_id, title=titles.get(page_id))
+        if page.text:
             documents.append(
                 Document(
-                    id=hashlib.sha1(uri.encode()).hexdigest()[:12],
+                    id=hashlib.sha1(page.uri.encode()).hexdigest()[:12],
                     source_kind="composio",
-                    uri=uri,
-                    title=title,
-                    text=text,
-                    content_hash=hashlib.sha1(text.encode()).hexdigest(),
+                    uri=page.uri,
+                    title=page.title,
+                    text=page.text,
+                    content_hash=hashlib.sha1(page.text.encode()).hexdigest(),
                     metadata={
                         "toolkit": toolkit,
-                        "page_id": page_id,
-                        "truncated": bool(data.get("truncated")),
-                        "unknown_blocks": len(data.get("unknown_block_ids") or []),
+                        "page_id": page.page_id,
+                        "truncated": page.truncated,
+                        "unknown_blocks": page.unknown_blocks,
                     },
                     fetched_at=datetime.now(UTC),
                 )
             )
-        await progress(index, len(page_ids), title)
+        await progress(index, len(page_ids), page.title)
 
     from bob.core import ledger
 
