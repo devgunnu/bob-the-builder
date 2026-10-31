@@ -59,7 +59,7 @@ Ideas (data jokes, keep them kind):
 Each has an acceptance check.
 
 1. **Bob dives into the bar** (needs `dive` pose). During `blackout`, Bob jumps from the landing header into the bar before the morph. *Done when:* visible in the 2.1 s blackout, no layout jump.
-2. **Stage-aware Bob (still frames only).** Swap the still AppShell / reading-screen pose by `lastStage` (`read` for fetch/triage/evidence, `type` for generate, `stamp` for verify, `carry` for export). No loops inside the app (UX_NOTES rule 7). *Done when:* Plan and Build pass the pose from the stream.
+2. **Stage-aware Bob (still frames only).** Swap the still AppShell / reading-screen pose by `lastStage` (`read` for fetch/triage/evidence, `type` for generate, `stamp` for verify, `carry` for export). No loops inside the app (UX_NOTES rule 7). *Done when:* Plan and Build pass the pose from the stream. **Done.**
 3. **Whole-page drag and drop** on the landing page: dropping files shows a glowing drop zone and attaches them to the composer. *Done when:* files appear as chips in the composer.
 4. **Cubes assemble on verify.** A small cube pile next to the Kept counter grows as kept rows arrive; rejected rows show a cracked cube falling away. *Done when:* smooth at 30 rows/s.
 5. **Completion moment (subtle).** On `done`, a single soft fade-in of the report headline; no confetti inside the app (UX_NOTES rule 7).

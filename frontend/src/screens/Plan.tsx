@@ -9,6 +9,10 @@ import { AppShell } from "../components/AppShell";
 import { Bob } from "../components/Bob";
 import { Button, CASE_INFO, CaseHeader, ConfirmButton, ErrorBanner, Label, caseLabel, usd, useTitle } from "../components/ui";
 
+function readingPose(stage: StageName | null): "read" | "think" {
+  return ["fetch", "triage", "evidence"].includes(stage ?? "") ? "read" : "think";
+}
+
 const READ_STAGES: { id: StageName; label: string }[] = [
   { id: "fetch", label: "Fetch sources" },
   { id: "chunk", label: "Chunk and filter" },
@@ -34,7 +38,7 @@ function ReadingView({ s, onCancel }: { s: JobStream; onCancel: () => void }) {
 
   return (
     <div className="mx-auto flex max-w-xl flex-col items-center px-4 py-12 text-center">
-      <Bob pose={failed ? "idle" : "idea"} size={110} float={false} still />
+      <Bob pose={failed ? "idle" : readingPose(s.lastStage)} size={110} float={false} still />
       <h1 className="mt-4 font-display text-[26px] font-extrabold">{failed ? "Bob stopped reading" : "Bob is reading your sources"}</h1>
       <p className="mt-1 text-[14px] text-dim">{failed ? "See the error below." : `${cur.label}${p?.detail ? ` · ${p.detail}` : "…"}`}</p>
       {!failed && (
@@ -355,7 +359,7 @@ export default function PlanScreen() {
   useEffect(() => setCancelError(null), [id]);
 
   return (
-    <AppShell pose={s.plan ? "idea" : "think"} title={s.job?.spec.goal} step="plan" status={s.status} hasReport={!!s.report}>
+    <AppShell pose={s.plan ? "idea" : readingPose(s.lastStage)} title={s.job?.spec.goal} step="plan" status={s.status} hasReport={!!s.report}>
       {s.loadError ? (
         <div className="mx-auto max-w-3xl p-6"><ErrorBanner error={s.loadError} title="Couldn't load this job" /></div>
       ) : s.plan ? (
