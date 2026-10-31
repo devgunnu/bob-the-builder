@@ -87,21 +87,27 @@ function rowEvent(row: Row): RowEvent {
 }
 
 function RowFeed({ rows, jobId, kept, rejected }: { rows: RowEvent[]; jobId: string; kept: number; rejected: number }) {
+  const rowHeight = 66;
   const [filter, setFilter] = useState<"kept" | "rejected">("kept");
   const [older, setOlder] = useState<RowEvent[]>([]);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasOlder, setHasOlder] = useState(true);
   const [olderError, setOlderError] = useState<ApiError | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
   const nav = useNavigate();
   const recent = rows.filter((r) => r.verdict === filter);
   const recentIds = new Set(rows.map((row) => row.id));
   const shown = [...recent, ...older.filter((row) => !recentIds.has(row.id))];
+  const firstVisible = Math.max(0, Math.floor(scrollTop / rowHeight) - 3);
+  const lastVisible = Math.min(shown.length, firstVisible + 15);
+  const visibleRows = shown.slice(firstVisible, lastVisible);
   const reasons = filter === "rejected" ? topReasons(rows) : [];
 
   useEffect(() => {
     setOlder([]);
     setHasOlder(true);
     setOlderError(null);
+    setScrollTop(0);
   }, [filter]);
 
   const loadOlder = async () => {
@@ -150,16 +156,17 @@ function RowFeed({ rows, jobId, kept, rejected }: { rows: RowEvent[]; jobId: str
       {shown.length === 0 ? (
         <Empty>{filter === "kept" ? "Verified rows appear here." : "Nothing rejected yet."}</Empty>
       ) : (
-        <div className="scroll-thin max-h-[560px] overflow-y-auto px-1.5 pb-1.5">
-          <ul>
+        <div className="scroll-thin max-h-[560px] overflow-y-auto px-1.5 pb-1.5" onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}>
+          <ul className="relative" style={{ height: shown.length * rowHeight }}>
             <AnimatePresence initial={false}>
-              {shown.map((r) => (
+              {visibleRows.map((r, index) => (
                 <motion.li
                   key={r.id}
-                  initial={{ opacity: 0, y: -8, backgroundColor: r.verdict === "kept" ? "rgba(99,240,207,0.10)" : "rgba(251,113,133,0.12)" }}
+                  initial={r.id === shown[0]?.id ? { opacity: 0, y: -8, backgroundColor: r.verdict === "kept" ? "rgba(99,240,207,0.10)" : "rgba(251,113,133,0.12)" } : false}
                   animate={{ opacity: 1, y: 0, backgroundColor: "rgba(0,0,0,0)" }}
                   transition={{ duration: 0.45 }}
-                  className="rounded-xl"
+                  className="absolute left-0 w-full rounded-xl"
+                  style={{ top: (firstVisible + index) * rowHeight, height: rowHeight }}
                 >
                   <button onClick={() => nav(`/jobs/${jobId}/rows/${r.id}`)} className="flex w-full items-start gap-2.5 rounded-xl px-2.5 py-2.5 text-left hover:bg-white/[0.04]">
                     {r.verdict === "kept" ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-bob-mint" /> : <XCircle className="mt-0.5 size-4 shrink-0 text-rose-400" />}
