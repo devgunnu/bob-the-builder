@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { Check, Copy, Download, Loader2 } from "lucide-react";
 import { api, ApiError } from "../api/client";
-import type { AwsSetup, BedrockAccess, ModelRoles, UserProfile } from "../api/types";
+import type { AvailableModel, AwsSetup, BedrockAccess, ModelRoles, UserProfile } from "../api/types";
 import { AppShell } from "../components/AppShell";
 import { Bob } from "../components/Bob";
 import { ModelsEditor } from "../components/ModelsEditor";
@@ -57,6 +57,20 @@ export default function AccountScreen() {
   const [modelBusy, setModelBusy] = useState(false);
   const [modelResults, setModelResults] = useState<Record<string, string> | null>(null);
   const [modelErr, setModelErr] = useState<ApiError | null>(null);
+  const [available, setAvailable] = useState<AvailableModel[] | null>(null);
+  const [availBusy, setAvailBusy] = useState(false);
+  const [availErr, setAvailErr] = useState<ApiError | null>(null);
+  const loadAvailable = async () => {
+    setAvailBusy(true);
+    setAvailErr(null);
+    try {
+      setAvailable(await api.availableModels());
+    } catch (e) {
+      setAvailErr(e as ApiError);
+    } finally {
+      setAvailBusy(false);
+    }
+  };
 
   useEffect(() => {
     Promise.all([api.me(), api.awsSetup()])
@@ -186,8 +200,17 @@ export default function AccountScreen() {
             </StepCard>
 
             <StepCard id="models" n={2} title="Choose models" done={modelsOk}>
-              <p className="mb-3 text-[13px] text-dim">Any Bedrock model id or inference profile works. The defaults are filled in.</p>
-              {models && <ModelsEditor value={models} onChange={setModels} keys={keys} onKeys={setKeys} results={modelResults} />}
+              <p className="mb-3 text-[13px] text-dim">
+                Any Bedrock model id or inference profile works. The defaults are filled in.
+                {awsOk && !available && (
+                  <button onClick={() => void loadAvailable()} disabled={availBusy} className="ml-1 text-bob-sky hover:underline disabled:opacity-50">
+                    {availBusy ? "Loading your models…" : "Show the models in your account"}
+                  </button>
+                )}
+                {available && <span className="ml-1 text-bob-mint">{available.length} models available as suggestions.</span>}
+              </p>
+              <ErrorBanner error={availErr} title="Couldn't list your Bedrock models" />
+              {models && <ModelsEditor value={models} onChange={setModels} keys={keys} onKeys={setKeys} results={modelResults} options={available} />}
               <ErrorBanner error={modelErr} title="Couldn't save the models" />
               <Button className="mt-3" busy={modelBusy} disabled={!models?.writer.model_id || !models?.planner.model_id || !models?.judge.model_id} onClick={saveModels}>
                 Save and check

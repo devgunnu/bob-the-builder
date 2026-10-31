@@ -30,7 +30,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   if (cfg.auth !== "cognito") return <>{children}</>;
   return (
     <Suspense fallback={<div className="h-full bg-void" />}>
-      <CognitoGate>{children}</CognitoGate>
+      <CognitoGate signup={cfg.signup === "open"}>{children}</CognitoGate>
     </Suspense>
   );
 }
