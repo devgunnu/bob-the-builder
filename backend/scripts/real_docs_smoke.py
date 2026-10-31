@@ -1,3 +1,8 @@
+"""Provider-backed smoke test. From backend/: BOB_CACHE=0 uv run python scripts/real_docs_smoke.py.
+
+Uses paid services and real repository docs. Requires configured Bedrock, Jev and ScaleDown.
+"""
+
 import asyncio
 import hashlib
 from datetime import UTC, datetime
@@ -77,15 +82,15 @@ async def main():
         raise RuntimeError("Writer produced zero candidates")
     rows = await verify(candidates, ctx)
     print("verify", len(rows), "kept", sum(r.verdict == "kept" for r in rows), flush=True)
-    [
+    for r in rows:
+        if r.verdict != "rejected":
+            continue
         print(
             "REJECTION",
             r.reject_reason,
             [(c.name, c.passed, c.detail) for c in r.checks if not c.passed],
             flush=True,
         )
-        for r in rows
-    ]
     files = export(job, rows, [], "full", ["jsonl"], out_dir=Path("../runs/real-doc-integration/export"))
     print("export", len(files), "files", flush=True)
     if not any(r.verdict == "kept" for r in rows):
