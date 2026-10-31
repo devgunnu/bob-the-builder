@@ -1,35 +1,41 @@
 # .agents: Bob the Builder knowledge base
 
-Everything a human or an AI agent needs to build Bob at Night Hack (2026-10-30). Read in this order:
+Everything a human or an AI agent needs to build Bob at Night Hack (2026-10-30). Current version: **v4, the data factory**. Read in this order:
 
-1. **[PLAN.md](PLAN.md)**: pitch, architecture, cost model, build schedule, demo script, checklist, risks.
-2. **[CONTRACTS.md](CONTRACTS.md)**: data models, stage signatures, Jev questions, writer interface, presets, manifest, API, CLI. Lock before coding.
-3. **[DECISIONS.md](DECISIONS.md)**: why each choice was made, fallbacks, open questions.
-   - **[ASSESSMENT.md](ASSESSMENT.md)**: honest verdict on whether Bob is impressive enough, and what to change.
-4. **research/**: the raw reports the plan was compiled from.
-   - [01-modelforge-integration.md](research/01-modelforge-integration.md): exact formats, schemas and quirks of ModelForge.
-   - [02-jev-cdm-validation.md](research/02-jev-cdm-validation.md): what Jev and Constrained Decision Models are, and where they fit.
-   - [03-alternative-approaches.md](research/03-alternative-approaches.md): cheap selection, generation, QC, prior art, cost math.
-   - [04-hackathon-stack-and-build-plan.md](research/04-hackathon-stack-and-build-plan.md): partner integrations, format libraries, stack, timeline, demo.
-   - [05-cdm-recheck-and-llm-free-generation.md](research/05-cdm-recheck-and-llm-free-generation.md): **corrects 02.** CDM = ScaleDown Constrained Decoding Models; the zero-LLM generation engine.
-   - [06-true-synthetic-generation.md](research/06-true-synthetic-generation.md): **proposal.** New data = new inputs x a trustworthy oracle (the real product, a docs-compiled simulator, solvers). Superseded by 07.
-   - [07-dataset-generators.md](research/07-dataset-generators.md): **proposal.** Eleven zero-LLM generators that synthesize fine-tuning rows for any corpus (task multiplier, corrupt-and-restore, verifiable constraints, conversations, abstention, preference pairs, few-shot expander, ...).
-   - [09-llm-architect-design.md](research/09-llm-architect-design.md): **current direction (v3).** LLM writes generators + verifiers per corpus, cheap LLM phrases rows, Jev/ScaleDown/code prove every row; fair 3-way eval.
-   - [10-why-product-why-model.md](research/10-why-product-why-model.md): why Bob vs prompting Claude, why fine-tune vs RAG; repositions Bob around RAFT-style faithful-RAG data and narrow-skill distillation.
-   - [08-worked-example.md](research/08-worked-example.md): one real 60-word passage becomes about 570 rows, with exact counts, sample rows and evidence per technique.
+1. **[PLAN.md](PLAN.md)**: pitch, user flow, architecture, Jev and CDM roles, team and agents, 4-hour timeline, definition of done, cut lines, demo, cost, risks.
+2. **[CONTRACTS.md](CONTRACTS.md)**: source of truth for code. File ownership, core models, stage signatures, verification cascade, Jev and ScaleDown clients, HTTP API, orchestrator, SSE events, config, re-sync, export, real-only rules. Lock before coding.
+3. **[AGENT_BRIEFS.md](AGENT_BRIEFS.md)**: the prompt for each coding agent (A1 to A4, G1 to G4).
+4. **[DECISIONS.md](DECISIONS.md)**: why each choice was made. v4 decisions are D18 to D24. Open questions are at the end.
+5. **[research/11-data-factory.md](research/11-data-factory.md)**: the v4 ideation record. Why templates were dropped, the mechanisms we considered, the user flow, the Jev / CDM roles and the cascade.
 
-## TL;DR
-**v3 update:** the zero-LLM rule is retired. See research/09: "LLM proposes, Bob proves". The reading and verification layers below are kept.
+## TL;DR (v4)
+- **What Bob is:** a synthetic data factory. Goal + company material in, verified fine-tuning data out. Every row ships with its proof.
+- **Pitch:** "The LLM writes, and small decision models check every row. The frontier model only looks at the rows where the checks disagree."
+- **Sources:** website URLs (Firecrawl), Notion / Confluence / Jira / Google Drive (Composio), file uploads, optional seed examples.
+- **Read:** chunk, free filters, dedup, Jev triage, topics with ScaleDown Summarize briefs, ScaleDown Extract evidence index with verbatim spans.
+- **Plan:** the Planner (Sonnet 5.5) proposes a coverage map: topic x persona x case type (answerable, partial, unanswerable, false premise) x difficulty. The user edits it and clicks Start.
+- **Generate:** the Writer (Haiku 5.5) makes candidates per cell, 5 per call, with prompt caching.
+- **Verify:** tier 1 code, tier 2 Jev + Extract invented-feature check with calibrated routing, tier 3 Sonnet judge on about 5% uncertain rows + a 2% audit.
+- **Fill gaps:** rounds 2 and 3 target empty cells and cells with high rejection rates. Base-model probing is a stretch.
+- **Ship:** a data quality report, DPO pairs from rejected vs kept replies, presets (OpenAI chat, ShareGPT, Alpaca, ModelForge, DPO, full) in JSONL / JSON / CSV / Parquet, plus manifest and provenance.
+- **No training:** Bob makes data only (D20). **No mocks:** every call is real; only a cache of real responses (D23).
+- **Stack:** FastAPI + SSE, React + TypeScript; all LLMs are Anthropic on AWS Bedrock. Convex and Photon are dropped (D24).
+- **Team:** Aaditya owns AI and backend logic (A1 to A4); Gunbir owns frontend and integrations (G1 to G4). Estimate: about $1.70 per 1,000 kept rows vs about $20 frontier-only.
 
-### v2.1 summary (reading + verification layers)
-- **Read:** free filters, then Jev triages chunks and ScaleDown Extract pulls typed facts with verbatim source spans into a fact graph.
-- **Generate, with zero LLM tokens:** question programs compose new examples over the graph (multi-hop, comparisons, arithmetic, aggregation, procedures, true/false, multi-turn, reasoning traces). Answers are computed or copied, so they are correct by construction.
-- **Speak:** a grammar bank overgenerates phrasings, Jev picks the most natural; ScaleDown Summarize writes topic explanations and summaries.
-- **Trust:** span checks, corroboration, Jev verification, certificate with confidence interval; free hard DPO negatives from perturbed facts.
-- **Output:** ModelForge / OpenAI / Alpaca / ShareGPT / TRL / CoT / RLVR / custom presets in JSONL, JSON, CSV, Parquet, Arrow, Avro, Postgres JSONB `.sql`.
-- **Cost:** about $0.43 for 5,000 rows (about $0 on starter tokens) vs about $70 with Opus 5.5.
-- **Demo:** Bob compiles a real product's docs into a dataset, ModelForge fine-tunes a small model on it live, and the tuned model answers product questions the base model gets wrong.
-- **Standalone:** never imports ModelForge; integrates through files + `bob_manifest.json`.
+## History (older material, read for context only)
+v4 retires templates, question programs, grammar banks, the generator library and Architect-written generator code (D18). The files below are kept as a record. Where they conflict with PLAN.md or CONTRACTS.md, PLAN.md and CONTRACTS.md win.
+
+- [ASSESSMENT.md](ASSESSMENT.md): **pre-v4.** Honest verdict on the v2/v3 plan. Its advice on visible proof, correctness over cost, a sponsor corpus and scope still applies; its fine-tune and eval advice does not (D20).
+- [research/01-modelforge-integration.md](research/01-modelforge-integration.md): ModelForge formats and quirks. Still valid for the `modelforge-*` export presets.
+- [research/02-jev-cdm-validation.md](research/02-jev-cdm-validation.md): Jev sections still valid. **CDM sections superseded** (wrong term; see 05).
+- [research/03-alternative-approaches.md](research/03-alternative-approaches.md): cheap selection, generation, QC, prior art, cost math. Background.
+- [research/04-hackathon-stack-and-build-plan.md](research/04-hackathon-stack-and-build-plan.md): partner integrations and stack. **Partly superseded:** Convex and Photon are dropped, and the timeline is replaced by PLAN.md.
+- [research/05-cdm-recheck-and-llm-free-generation.md](research/05-cdm-recheck-and-llm-free-generation.md): the correct CDM facts (ScaleDown Constrained Decoding Models) are still valid. **The zero-LLM generation engine is superseded.**
+- [research/06-true-synthetic-generation.md](research/06-true-synthetic-generation.md): **superseded** (by 07, then by v4).
+- [research/07-dataset-generators.md](research/07-dataset-generators.md): **superseded.** Zero-LLM generator library.
+- [research/08-worked-example.md](research/08-worked-example.md): **superseded.** Worked example for the generator library.
+- [research/09-llm-architect-design.md](research/09-llm-architect-design.md): **sections 1 to 4 superseded** (Architect-written generator code). The verification ideas and evidence are kept in v4; the eval plan is dropped (D20).
+- [research/10-why-product-why-model.md](research/10-why-product-why-model.md): still valid for the "why a product" argument and the faithfulness / abstention focus. Its model-eval demo is dropped (D20).
 
 ## Caveats
-Research agents could not reach several vendor sites (TypeSafe, OpenRouter, Photon, Firecrawl docs, Hugging Face), so some prices, endpoints and model IDs come from third-party sources. The pre-event checklist in PLAN.md verifies them first.
+Research agents could not reach several vendor sites (TypeSafe, OpenRouter, Firecrawl docs, Hugging Face), so some prices, endpoints and model IDs come from third-party sources. The pre-start checklist in PLAN.md section 6 verifies them with real calls first.
