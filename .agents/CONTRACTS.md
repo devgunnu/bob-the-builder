@@ -15,7 +15,7 @@
 6. **Commit small and often** to your builder's branch: `aaditya/*` or `gunbir/*`. Merge to `main` at each checkpoint.
 7. **Storage and process rules (D25).** Code writes files only under `settings.runs_dir` (`BOB_RUNS_DIR`). Never hard-code `runs/`. Durable data goes only through `Store`, `Blobs` and `EventLog` (section 7). The API process never starts background work. Long work runs only in the job runner (local: asyncio task; aws: Fargate worker).
 8. **Thresholds come from `settings_for(job)`.** Env vars give the defaults. A job can override them with `JobSpec.options` (`JobOptions`, section 2). A1 adds `settings_for(job) -> EffectiveSettings` in `config.py`. All pipeline code reads thresholds and limits through it, never directly from env or `settings`.
-9. **Auth and ownership (D27).** Every route except `/ping` and `/config/public` needs a signed-in user (G1 `current_user()`, section 6). Every job has an `owner_id`. A user sees and changes only their own jobs. A job of another user returns HTTP 404. Bedrock calls use the job's `BedrockAccess` snapshot, never Bob's own role in aws mode. LLM calls use the job's `Job.models` snapshot through `get_llm(job, role)` (section 14).
+9. **Ownership (D27, sign-in removed 2026-10-31).** There is no sign-in: every caller is the built-in user `local` (G1 `current_user()`, section 6). Every job has an `owner_id`. A user sees and changes only their own jobs. A job of another user returns HTTP 404. Bedrock calls use the job's `BedrockAccess` snapshot, never Bob's own role in aws mode. LLM calls use the job's `Job.models` snapshot through `get_llm(job, role)` (section 14).
 
 ## 1. Repository layout and ownership
 
@@ -71,12 +71,11 @@ backend/
       sync.py                       G2   content hashes, diff for re-sync
     api/
       app.py routes.py sse.py       G1   FastAPI app, routes (section 6), SSE
-      auth.py                       G1   current_user() dependency: Cognito JWT check or "local" user (section 14)
+      auth.py                       G1   current_user() dependency: the built-in "local" user (no sign-in, section 14)
   tests/                            each owner tests their own modules
   Dockerfile                        A5   one image for the API Lambda and the Fargate worker (section 13)
 frontend/                           G3 (shell, setup, plan screens, package.json), G4 (build, rows, report screens, src/components/viz/*)
   src/api/client.ts types.ts        G3 owns; types.ts mirrors section 2 exactly; client.ts adds the auth header
-  src/auth/*                        G3   Amplify config + Authenticator wrapper (section 14)
   src/screens/Account*              G3   Account screen, route /account: "AWS access" panel + "Models" panel (section 14)
 demo/                               G2: smoke/ (small real corpus for tests), corpus/ (cached real crawl of the demo docs)
 runs/                               gitignored job outputs (local mode; path = BOB_RUNS_DIR)
@@ -577,17 +576,17 @@ Base `/api`. JSON unless stated.
 | Method | Path | Body / query | Returns |
 |---|---|---|---|
 | GET | `/ping` | | `{ok: true}` (no external calls; Lambda readiness check; no auth) |
-| GET | `/config/public` | | `{auth: "none" \| "cognito", cognito?: {region, user_pool_id, client_id, domain}}` (no auth) |
-| GET | `/me` | | `UserProfile` (made on first sign-in) |
-| GET | `/me/aws/setup` | | `{bob_account_id, external_id, template_url: "/api/me/aws/template", cli_command}` |
+| GET | `/me` | | `UserProfile` (made on first call) |
+| GET | `/me/aws/setup` | | `{bob_account_id, external_id, template_url: "/api/me/aws/template", cli_command}` (`bob_account_id: null` when neither `BOB_ACCOUNT_ID` nor STS can tell) |
 | GET | `/me/aws/template` | | the YAML file `bedrock-role.yaml` (read from `/app/infra/templates/`) |
 | PUT | `/me/aws` | `BedrockAccess` | `UserProfile` (mode forced to `assume_role` in aws mode; clears `bedrock_verified_at`) |
 | POST | `/me/aws/verify` | | `{ok, error?}` (AWS access only: `sts:AssumeRole`; sets `bedrock_verified_at`) |
 | PUT | `/me/models` | `ModelRoles` (+ optional `api_keys: {role: key}` for openai_compatible, P1) | `UserProfile` (clears `models_verified_at`; never returns a key, only `api_key_set: true`) |
 | POST | `/me/models/verify` | | `{ok, roles: {writer: "ok" \| error, planner: ..., judge: ..., fallback: ...}}` (one tiny real call per configured role, all providers; sets `models_verified_at`) |
-| GET | `/me/models/available` | | P1: Bedrock foundation models and inference profiles in the user's region (`bedrock:ListFoundationModels`, `bedrock:ListInferenceProfiles` through the assumed role) |
+| GET | `/me/models/available` | | `{region, models: [{id, name, provider, kind: "inference_profile" \| "foundation_model", on_demand}]}`: Bedrock foundation models and inference profiles in the user's region (`bedrock:ListFoundationModels`, `bedrock:ListInferenceProfiles` through the assumed role) |
 | POST | `/uploads` | multipart files (body <= 6 MB) | `{upload_ids: [...], files: [{id, name, bytes}]}` |
-| POST | `/uploads/presign` | `{name, bytes}` | `{upload_id, put_url}` (P1: presigned S3 PUT for files > 6 MB) |
+| POST | `/uploads/presign` | `{name, bytes, content_type?}` | `{upload_id, put_url, method: "PUT", headers, name, bytes}`: files over 5 MB. aws: presigned S3 PUT (15 min); local: `PUT /api/uploads/{upload_id}/content` on this API |
+| PUT | `/uploads/{id}/content` | raw bytes | `{id, name, bytes}` (local mode only; 409 in aws mode, 400 on a size mismatch) |
 | GET | `/connectors` | | `[{toolkit, connected: bool, account_id?}]` |
 | POST | `/connectors/{toolkit}/connect` | `{redirect_url}` | `{auth_url, connection_id}` (Composio OAuth) |
 | GET | `/connectors/{toolkit}/status` | `?connection_id=` | `{connected, account_id}` |
@@ -605,7 +604,7 @@ Base `/api`. JSON unless stated.
 | POST | `/jobs/{id}/export` | `{preset, formats}` | `{files: {...}}` |
 | GET | `/jobs/{id}/files/{name:path}` | | file download (aws: 302 to a presigned S3 URL). `name` = a `Job.files` key, e.g. `openai-chat/train/train.jsonl` |
 | GET | `/jobs/{id}/files/{name:path}/url` | | `{url}` (aws: presigned S3 GET, 1 h; local: `/api/jobs/{id}/files/{name}`) |
-| POST | `/jobs/{id}/resync` | | `Job` (P1, section 10) |
+| POST | `/jobs/{id}/resync` | | `Job` (section 10; 409 unless the job is done with a plan) |
 | GET | `/presets` | | `[{name, formats, description}]` |
 | GET | `/health` | | `{keys: {bedrock, jev, scaledown, firecrawl, composio}}` (each key: a real test call result, `ok` or the error). `bedrock` uses the caller's profile, or `"not connected"`. Needs a signed-in user |
 
@@ -621,8 +620,8 @@ Route rules (D25, G1):
 - Composio OAuth `redirect_url` = `BOB_PUBLIC_URL + BOB_OAUTH_CALLBACK_PATH` (`/oauth/callback`). G3 serves this route.
 - The frontend calls the relative base `/api` (same origin through CloudFront). The Vite dev server proxies `/api` to `localhost:8000`. No hard-coded host (G3).
 
-Auth and status rules (D27, G1):
-- Every route except `/ping` and `/config/public` needs a user. `client.ts` (G3) sends `Authorization: Bearer <access token>` on every call. G1 `api/auth.py` `current_user()` checks it (section 14). A missing or bad token gives HTTP 401 `{"error": "sign in required"}`.
+Ownership and status rules (D27, G1):
+- No sign-in: every route acts as the built-in user `local` through G1 `api/auth.py` `current_user()` (section 14). Routes still take the user from that dependency, so the owner rules below hold and tests can act as another user.
 - Every `/jobs/{id}/*` route returns HTTP 404 when `Job.owner_id` is not the caller's id. Do not tell the caller that the job exists.
 - `POST /jobs` returns HTTP 412 `{"error": "connect AWS first"}` when `bedrock_verified_at` is not set, and HTTP 412 `{"error": "verify models first"}` when `models_verified_at` is not set. Local mode applies the same rule: A1 runs `verify_bedrock` and `verify_models` once for the `local` user (real calls on the default chain) before the first local job.
 - `POST /jobs` returns HTTP 429 `{"error": "too many running jobs"}` when the runner is busy (section 7). Nothing is saved.
@@ -763,7 +762,7 @@ def load_seeds(data: bytes, name: str) -> list[list[Message]]   # JSONL {"messag
 Wire format: `id: <seq>\nevent: <type>\ndata: <json>\n\n`. The store keeps every event per job, so a client that reconnects with `Last-Event-ID` gets a replay.
 
 Wire rules (D25; G1 sends, G4 reads):
-- Auth: `EventSource` cannot send headers. G3's SSE helper uses `@microsoft/fetch-event-source` with the `Authorization: Bearer <access token>` header. It sends `Last-Event-ID` itself. On each reconnect it gets a fresh token. The SSE route checks the user and the owner like every `/jobs/{id}/*` route.
+- Stream: G3's SSE helper uses `@microsoft/fetch-event-source` and sends `Last-Event-ID` itself on each reconnect. It closes on a terminal event only when `GET /jobs/{id}` says the job is finished now (a re-synced job replays an older `done`). The SSE route checks the owner like every `/jobs/{id}/*` route.
 - At stream start, send `retry: 1000`.
 - Send a `: ping` comment every `BOB_SSE_HEARTBEAT_S` (15 s). CloudFront cuts an idle stream.
 - Headers: `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `X-Accel-Buffering: no`.
@@ -854,9 +853,10 @@ In aws mode, `config.py` loads the secret JSON from `BOB_SECRET_ARN` into the en
 
 LLM client (D33): pipeline code calls `get_llm(job, role)` (section 3). The `bedrock` provider uses the Bedrock **Converse API** (`bedrock-runtime` `converse`) through boto3 in `asyncio.to_thread`. Credentials come from the job's `BedrockAccess` through `llm/credentials.py` (botocore `RefreshableCredentials`). No Anthropic SDK in the request path. Use prompt caching (Converse `cachePoint`) on the Writer system prompt + topic brief (same per cell) when the registry says the model supports it. Request structured JSON output by the registry `json_mode`; on parse failure, retry once, then drop.
 
-## 10. Re-sync (P1, G2 + A1)
-1. `sync.py` re-fetches each `SourceSpec` and compares `Document.content_hash` per `uri`: `added`, `changed`, `removed`.
-2. The orchestrator re-runs reading only on added and changed docs, and marks topics that contain changed chunks as affected.
+## 10. Re-sync (P1, G2 + A1; built 2026-10-31)
+0. `POST /jobs/{id}/resync` works on a `done` job with a plan (else 409; 429 at capacity). The UI link is "Check the sources again" on the Report screen. No change in the sources: the job goes back to `done` at once.
+1. `sync.py` re-fetches each `SourceSpec` and compares `Document.content_hash` per `uri`: `added`, `changed`, `removed` (`refetch_diff(job, old_docs, progress) -> (new_docs, diff, stale_doc_ids)`; the orchestrator keeps each fetch in `runs/<job>/docs/` + `docs.json`).
+2. The orchestrator reads the current documents again (all of them, so evidence and retrieval cover the whole corpus).
 3. Kept rows whose `spans` point to changed or removed docs are verified again (tier 1 + tier 2). Rows that fail become `rejected` with reason `stale: source changed`.
 4. Affected cells get a gap round. Emit `round` with `reason: "resync"`.
 
@@ -1016,16 +1016,12 @@ Cut line: if the cloud job path fails at T+3:30, demo on localhost and show the 
 
 ## 14. Accounts and bring-your-own AWS (D26, D27, D33)
 
-Each user signs in through Cognito (D27). Each user connects their own AWS account for Bedrock (D26). Each user picks the model for each LLM role (D33). Bedrock calls (writer, planner, judge and fallback models) run in the user's account and bill there. Bob's own keys still pay for Jev, ScaleDown, Firecrawl and Composio. Bob stores no long-lived user keys.
+There is no sign-in for the demo (2026-10-31): every caller is the built-in user `local`. Each user connects their own AWS account for Bedrock (D26). Each user picks the model for each LLM role (D33). Bedrock calls (writer, planner, judge and fallback models) run in the user's account and bill there. Bob's own keys still pay for Jev, ScaleDown, Firecrawl and Composio. Bob stores no long-lived user keys.
 
-### Sign-in (D27)
-1. The frontend (G3, `src/auth/*`) reads `GET /api/config/public`. `auth: "none"`: no sign-in. `auth: "cognito"`: it configures AWS Amplify v6 and shows the `@aws-amplify/ui-react` Authenticator. One build runs on Vite dev and on CloudFront.
-2. `client.ts` sends `Authorization: Bearer <access token>` on every call. The SSE helper sends the same header (section 8).
-3. G1 `api/auth.py` `current_user()`:
-   - `BOB_AUTH=cognito`: verify the access token with the pool JWKS (PyJWT[crypto]). Check the issuer, `token_use=access`, `client_id` and expiry. Cache the JWKS.
-   - `BOB_AUTH=none` (local default): the user id is `local`.
-   - Then call `Orchestrator.get_or_create_user(user_id, email)`.
-4. Open routes: `/ping`, `/config/public`. `/oauth/callback` is a frontend route only. All other routes need a user.
+### Who is calling (D27, sign-in removed 2026-10-31)
+1. No sign-in screen, no tokens. `client.ts` sends no `Authorization` header.
+2. G1 `api/auth.py` `current_user()` returns `Orchestrator.get_or_create_user("local", None)`. Owner checks (404 for another user's job, upload or connection) stay in code.
+3. Cognito resources may remain in the infra stack, unused. `BOB_AUTH`, `BOB_COGNITO_*` and `BOB_SIGNUP` are gone; `GET /config/public` is gone.
 
 ### Connect AWS (D26), Account screen (G3, `/account`)
 1. On first sign-in, Bob makes a `UserProfile` with a random `external_id` (uuid4). It never changes.
