@@ -49,9 +49,9 @@ class Settings(BaseSettings):
     aws_profile: str | None = _f("AWS_PROFILE")
 
     # ---------- model defaults for new profiles (D33); format <provider>:<model_id> ----------
-    default_writer_model: str = _f("BOB_DEFAULT_WRITER_MODEL", "bedrock:global.anthropic.claude-haiku-5-5")
-    default_planner_model: str = _f("BOB_DEFAULT_PLANNER_MODEL", "bedrock:global.anthropic.claude-sonnet-5-5")
-    default_judge_model: str = _f("BOB_DEFAULT_JUDGE_MODEL", "bedrock:global.anthropic.claude-sonnet-5-5")
+    default_writer_model: str = _f("BOB_DEFAULT_WRITER_MODEL", "bedrock:us.amazon.nova-2-lite-v1:0")
+    default_planner_model: str = _f("BOB_DEFAULT_PLANNER_MODEL", "bedrock:us.amazon.nova-2-lite-v1:0")
+    default_judge_model: str = _f("BOB_DEFAULT_JUDGE_MODEL", "bedrock:us.amazon.nova-2-lite-v1:0")
     default_fallback_model: str = _f("BOB_DEFAULT_FALLBACK_MODEL", "")  # empty = the writer model
     model_registry: str = _f("BOB_MODEL_REGISTRY", "bob/llm/registry.json")
     kms_key_id: str | None = _f("BOB_KMS_KEY_ID")  # aws: alias/bob-user-keys (P1)
