@@ -8,9 +8,13 @@ the job runner that `Orchestrator.create_job` starts.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Query, Request, UploadFile
+from fastapi.responses import FileResponse, RedirectResponse
+from pydantic import BaseModel
 from starlette.responses import StreamingResponse
 
 from bob.api.auth import current_user
@@ -188,3 +192,94 @@ async def get_row(job_id: str, row_id: str, user: User, orchestrator: Orch) -> R
         return await orchestrator.get_row(job_id, row_id)
     except LookupError as exc:
         raise not_found("row not found") from exc
+
+
+# ---------- spot-check, export, files, resync, presets ----------
+
+
+class SpotCheckBody(BaseModel):
+    ok: bool
+
+
+class ExportBody(BaseModel):
+    preset: str
+    formats: list[str] = ["jsonl"]
+
+
+def _presets() -> dict[str, dict[str, Any]]:
+    from bob.export.presets import list_presets
+
+    return {p["name"]: p for p in list_presets()}
+
+
+@router.get("/presets")
+async def presets(_: User) -> list[dict[str, Any]]:
+    return list(_presets().values())
+
+
+@router.post("/jobs/{job_id}/rows/{row_id}/spot-check")
+async def spot_check(job_id: str, row_id: str, body: SpotCheckBody, user: User, orchestrator: Orch) -> Any:
+    """Thumbs up/down on a kept row; returns the rebuilt Report (409 while a worker runs)."""
+    await owned_job(job_id, user, orchestrator)
+    try:
+        return await orchestrator.spot_check(job_id, row_id, body.ok)
+    except KeyError as exc:
+        raise not_found("row not found") from exc
+
+
+@router.post("/jobs/{job_id}/export")
+async def export(job_id: str, body: ExportBody, user: User, orchestrator: Orch) -> dict[str, Any]:
+    await owned_job(job_id, user, orchestrator)
+    preset = _presets().get(body.preset)
+    if preset is None:
+        raise ApiError(400, "unknown preset", detail=sorted(_presets()))
+    bad = [f for f in body.formats if f not in preset["formats"]]
+    if bad or not body.formats:
+        raise ApiError(400, "unsupported format", detail={"allowed": preset["formats"], "got": body.formats})
+    return {"files": await orchestrator.export(job_id, body.preset, body.formats)}
+
+
+def _export_key(job: Job, name: str) -> str:
+    """Blob key of one export file. Only names listed in Job.files can be downloaded."""
+    if name not in job.files:
+        raise not_found("file not found")
+    return f"runs/{job.id}/export/{name}"
+
+
+def _local_export_path(job: Job, name: str) -> Path:
+    root = (Path(settings.runs_dir) / job.id / "export").resolve()
+    path = (root / name).resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        raise not_found("file not found")
+    return path
+
+
+# Declared before the plain file route: `{name:path}` would otherwise swallow ".../url".
+@router.get("/jobs/{job_id}/files/{name:path}/url")
+async def file_url(job_id: str, name: str, user: User, orchestrator: Orch) -> dict[str, str]:
+    job = await owned_job(job_id, user, orchestrator)
+    key = _export_key(job, name)
+    url = await orchestrator.blobs.url(key, Path(name).name)
+    if url is None:
+        _local_export_path(job, name)
+        url = f"/api/jobs/{quote(job.id)}/files/{quote(name)}"
+    return {"url": url}
+
+
+@router.get("/jobs/{job_id}/files/{name:path}")
+async def file_download(job_id: str, name: str, user: User, orchestrator: Orch) -> Any:
+    job = await owned_job(job_id, user, orchestrator)
+    key = _export_key(job, name)
+    url = await orchestrator.blobs.url(key, Path(name).name)
+    if url is not None:
+        return RedirectResponse(url, status_code=302)
+    return FileResponse(_local_export_path(job, name), filename=Path(name).name)
+
+
+@router.post("/jobs/{job_id}/resync")
+async def resync(job_id: str, user: User, orchestrator: Orch) -> Job:
+    await owned_job(job_id, user, orchestrator)
+    try:
+        return await orchestrator.resync(job_id)
+    except NotImplementedError as exc:
+        raise ApiError(501, "re-sync is not available yet", detail=str(exc)) from exc
