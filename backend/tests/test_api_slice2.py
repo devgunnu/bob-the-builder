@@ -268,3 +268,65 @@ async def test_unknown_or_foreign_job_routes_404(client, done_job):
 
 async def test_models_roles_from_contract_shape():
     assert set(ModelRoles.model_fields) >= {"writer", "planner", "judge", "fallback"}
+
+
+# ---------- presigned (direct) uploads ----------
+
+
+async def test_presign_local_flow_end_to_end(client):
+    from bob.connectors import fetch_documents
+    from bob.connectors.upload import read_upload
+    from bob.core.models import SourceSpec
+
+    data = (SMOKE / "billing.md").read_bytes()
+    r = await client.post("/api/uploads/presign", json={"name": "billing.md", "bytes": len(data)})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["put_url"] == f"/api/uploads/{body['upload_id']}/content" and body["method"] == "PUT"
+    assert body["headers"]["Content-Type"] == "text/markdown"
+    put = await client.put(body["put_url"], content=data, headers=body["headers"])
+    assert put.status_code == 200 and put.json()["bytes"] == len(data)
+    assert [n for n, _ in await read_upload(body["upload_id"])] == ["billing.md"]  # markers hidden
+
+    async def progress(done: int, total: int, detail: str) -> None:
+        return None
+
+    docs = await fetch_documents(
+        SourceSpec(kind="upload", upload_ids=[body["upload_id"]]), "t", progress, user_id="local"
+    )
+    assert docs[0].title == "Billing | Firecrawl"
+
+
+async def test_presign_rejects_bad_requests(client):
+    r = await client.post("/api/uploads/presign", json={"name": "deck.pptx", "bytes": 10})
+    assert r.status_code == 400
+    r = await client.post("/api/uploads/presign", json={"name": "big.pdf", "bytes": 500 * 1024 * 1024})
+    assert r.status_code == 413
+    body = (await client.post("/api/uploads/presign", json={"name": "a.md", "bytes": 5})).json()
+    r = await client.put(body["put_url"], content=b"too long for five", headers=body["headers"])
+    assert r.status_code == 400 and r.json()["error"] == "size mismatch"
+    await as_user("intruder")
+    r = await client.put(body["put_url"], content=b"12345", headers=body["headers"])
+    assert r.status_code == 404
+
+
+def test_s3_put_url_signs_size_and_type(monkeypatch):
+    # Presigning is computed locally (no network); placeholder credentials are enough to sign.
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIAEXAMPLEEXAMPLE")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "example")
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
+    monkeypatch.setenv("BOB_BUCKET", "bob-example-bucket")
+    import asyncio
+    from urllib.parse import parse_qs, urlsplit
+
+    from bob.aws.blobs import S3Blobs
+    from bob.config import get_settings
+
+    get_settings.cache_clear()
+    try:
+        url = asyncio.run(S3Blobs().put_url("runs/uploads/abc/manual.pdf", "application/pdf", 1234))
+    finally:
+        get_settings.cache_clear()
+    query = parse_qs(urlsplit(url).query)
+    assert query["X-Amz-SignedHeaders"] == ["content-length;content-type;host"]
+    assert query["X-Amz-Expires"] == ["900"]

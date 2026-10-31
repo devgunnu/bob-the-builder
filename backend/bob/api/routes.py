@@ -21,7 +21,14 @@ from bob.api.auth import current_user
 from bob.api.deps import get_orchestrator, settings
 from bob.api.errors import ApiError, not_found
 from bob.api.sse import parse_last_event_id, sse_response
-from bob.connectors.upload import UploadError, UploadNotFound, check_owner, save_uploads
+from bob.connectors.upload import (
+    UploadError,
+    UploadNotFound,
+    check_owner,
+    presign_upload,
+    presigned,
+    save_uploads,
+)
 from bob.core.models import Job, JobSpec, Plan, Row, UserProfile
 from bob.orchestrator import Orchestrator
 
@@ -110,6 +117,52 @@ async def upload_files(request: Request, files: list[UploadFile], user: User) ->
         "upload_ids": [f.id for f in saved],
         "files": [{"id": f.id, "name": f.name, "bytes": f.bytes} for f in saved],
     }
+
+
+class PresignBody(BaseModel):
+    name: str
+    bytes: int
+    content_type: str | None = None
+
+
+@router.post("/uploads/presign")
+async def presign(body: PresignBody, user: User, orchestrator: Orch) -> dict[str, Any]:
+    """Direct upload for files over the 6 MB request limit (P1).
+
+    aws: a presigned S3 PUT (Content-Type and Content-Length are signed, 15 min).
+    local: this API's own `PUT /api/uploads/{id}/content` (send the Authorization header).
+    Then use `upload_id` in a SourceSpec or as `seed_upload_id`, as with POST /uploads.
+    """
+    try:
+        upload = await presign_upload(body.name, body.bytes, owner_id=user.id, content_type=body.content_type)
+    except UploadError as exc:
+        status = 413 if "limit" in str(exc) else 400
+        raise ApiError(status, "bad upload", detail=str(exc)) from exc
+    url = await orchestrator.blobs.put_url(upload.key, upload.content_type, upload.bytes)
+    return {
+        "upload_id": upload.id,
+        "put_url": url or f"/api/uploads/{upload.id}/content",
+        "method": "PUT",
+        "headers": {"Content-Type": upload.content_type},
+        "name": upload.name,
+        "bytes": upload.bytes,
+    }
+
+
+@router.put("/uploads/{upload_id}/content")
+async def upload_content(upload_id: str, request: Request, user: User, orchestrator: Orch) -> dict[str, Any]:
+    """Local mode only: receives the bytes for a presigned upload (aws uploads go straight to S3)."""
+    try:
+        upload = await presigned(upload_id, owner_id=user.id)
+    except UploadNotFound as exc:
+        raise not_found("upload not found") from exc
+    if await orchestrator.blobs.put_url(upload.key, upload.content_type, upload.bytes) is not None:
+        raise ApiError(409, "upload directly to put_url", detail="this deployment uploads to S3")
+    data = await request.body()
+    if len(data) != upload.bytes:
+        raise ApiError(400, "size mismatch", detail={"expected": upload.bytes, "got": len(data)})
+    await orchestrator.blobs.put(upload.key, data, upload.content_type)
+    return {"id": upload.id, "name": upload.name, "bytes": upload.bytes}
 
 
 # ---------- jobs ----------
