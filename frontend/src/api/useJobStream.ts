@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { api, ApiError, subscribeJob } from "./client";
 import type { BobEvent, Cell, CellUpdate, CostSummary, Job, JobStatus, Plan, Report, RowEvent, StageName } from "./types";
 
@@ -54,12 +54,10 @@ export function useJobStream(jobId: string | undefined): JobStream & { setReport
     loadError: null,
     connected: false,
   });
-  const seen = useRef(new Set<string>());
 
   useEffect(() => {
     if (!jobId) return;
     let alive = true;
-    seen.current = new Set();
 
     api
       .getJob(jobId)
@@ -105,7 +103,8 @@ export function useJobStream(jobId: string | undefined): JobStream & { setReport
             return { ...p, cells: { ...p.cells, [u.cell_id]: { ...prev, ...u } } };
           }
           case "row": {
-            const rows = [e.data, ...p.rows];
+            // a re-checked row (resync) replaces its older entry
+            const rows = [e.data, ...p.rows.filter((r) => r.id !== e.data.id)];
             if (rows.length > FEED_CAP) rows.length = FEED_CAP;
             return { ...p, rows };
           }
@@ -127,13 +126,7 @@ export function useJobStream(jobId: string | undefined): JobStream & { setReport
       jobId,
       (e) => {
         if (!alive) return;
-        // De-duplicate replayed rows here, not inside the state updater
-        // (React may call updaters twice).
-        if (e.type === "row") {
-          if (seen.current.has(e.data.id)) return;
-          seen.current.add(e.data.id);
-        }
-        apply(e);
+        apply(e); // replays are de-duplicated by event id in subscribeJob; a repeated row id replaces the old entry
       },
       () => alive && setS((p) => ({ ...p, connected: false })),
     );

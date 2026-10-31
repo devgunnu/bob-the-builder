@@ -255,7 +255,12 @@ export function subscribeJob(jobId: string, onEvent: (e: BobEvent, id: number) =
       }
       const e = { type: msg.event, data } as BobEvent;
       onEvent(e, id);
-      if (e.type === "error" || e.type === "done" || (e.type === "job.status" && TERMINAL.has(e.data.status))) ctrl.abort();
+      // A replay can hold an older finish (a re-synced job): close only when the job is finished now.
+      if (e.type === "error" || e.type === "done" || (e.type === "job.status" && TERMINAL.has(e.data.status)))
+        void api
+          .getJob(jobId)
+          .then((job) => TERMINAL.has(job.status) && ctrl.abort())
+          .catch(() => ctrl.abort());
     },
     onerror(err) {
       onError?.(err);
