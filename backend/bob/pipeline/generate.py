@@ -33,6 +33,7 @@ from bob.core.models import (
     Job,
     Message,
     Plan,
+    Row,
     Topic,
 )
 from bob.llm.bedrock import LLMError, LLMOutputError
@@ -511,3 +512,208 @@ async def generate(cell: Cell, plan: Plan, ctx: GenContext, n: int) -> list[Cand
     if jobs and not out and errors:
         raise errors[-1]
     return out[: max(n, 0)] if len(out) > n else out
+
+
+# ---------- DPO flawed twins (P1) ----------
+def _span_chunks(ctx: GenContext, row: Row) -> list[str]:
+    ids = list(getattr(row, "chunk_ids", None) or [])
+    if ids:
+        return [c for c in ids if c in ctx.chunks]
+    out = []
+    for sp in row.spans:
+        for ch in ctx.chunks.values():
+            if ch.doc_id == sp.doc_id and ch.start < sp.end and sp.start < ch.end and ch.id not in out:
+                out.append(ch.id)
+    return out
+
+
+FLAWED_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "replies": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"item": {"type": "integer"}, "assistant": {"type": "string"}},
+                "required": ["item", "assistant"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["replies"],
+    "additionalProperties": False,
+}
+
+_FLAW_HINTS = {
+    "answerable": "add one plausible detail that the passages do not state",
+    "partial": "also answer the uncovered part with invented details",
+    "unanswerable": "answer confidently with invented details instead of abstaining",
+    "false_premise": "accept the wrong assumption as true",
+}
+
+
+class FlawedDropped(ValueError):
+    """The Writer gave no usable flawed reply for this row (bad JSON twice or missing item)."""
+
+
+def flawed_message(ctx: GenContext, rows: list[Row]) -> str:
+    parts = []
+    for i, row in enumerate(rows, 1):
+        user = next((m.content for m in row.messages if m.role == "user"), "")
+        asst = next((m.content for m in row.messages if m.role == "assistant"), "")
+        passages = []
+        for cid in _span_chunks(ctx, row)[:4]:
+            passages.append(f"[{cid}]\n{ctx.chunks[cid].text.strip()}")
+        if not passages:
+            passages = [sp.text.strip() for sp in row.spans[:4]]
+        absent = getattr(row, "absent_topic", None)
+        parts.append(
+            "\n".join(
+                [
+                    f"## Item {i}",
+                    f"Case type: {row.case_type} (flaw: {_FLAW_HINTS.get(row.case_type, '')})",
+                    *([f"Uncovered part (absent_topic): {absent}"] if absent else []),
+                    "",
+                    "PASSAGES:",
+                    "\n\n".join(passages) or "(none)",
+                    "",
+                    f"USER: {user}",
+                    "",
+                    f"CORRECT ASSISTANT REPLY: {asst}",
+                ]
+            )
+        )
+    return "\n\n".join(parts) + f"\n\nWrite {len(rows)} flawed replies, one per item.\n"
+
+
+async def generate_flawed_batch(rows: list[Row], ctx: GenContext) -> list[Candidate | None]:
+    """One Writer call for up to WRITER_BATCH rows: one flawed twin per row (None = dropped).
+
+    Ledger bucket `writer` (the client records it); purpose `dpo`. The twin keeps the row's cell, coords and
+    user turn, with the flawed reply as the assistant turn.
+    """
+    if not rows:
+        return []
+    job = ctx.job
+    llm = get_llm(job, "writer")
+    system = load_prompt("writer_flawed.md")
+    msg = flawed_message(ctx, rows)
+    data = None
+    cost = 0.0
+    for attempt in range(2):
+        text = msg if attempt == 0 else msg + "Your last reply had no usable replies. Write one per item.\n"
+        try:
+            val, usage = await llm.complete_json(
+                "writer", system, [Message(role="user", content=text)], FLAWED_SCHEMA, cache_prefix=""
+            )
+        except LLMOutputError:
+            break
+        cost += usage_cost_usd(job, "writer", usage)
+        reps = val.get("replies")
+        if isinstance(reps, list) and reps:
+            data = reps
+            break
+    by_item: dict[int, str] = {}
+    for r in data or []:
+        if not isinstance(r, dict):
+            continue
+        try:
+            k = int(r.get("item"))
+        except (TypeError, ValueError):
+            continue
+        text = str(r.get("assistant") or "").strip()
+        if 1 <= k <= len(rows) and text and k not in by_item:
+            by_item[k] = text
+    writer_model = model_for(job, "writer").model_id
+    n_ok = max(1, len(by_item))
+    out: list[Candidate | None] = []
+    for k, row in enumerate(rows, 1):
+        text = by_item.get(k)
+        correct = next((m.content for m in row.messages if m.role == "assistant"), "")
+        if not text or _norm(text) == _norm(correct):
+            out.append(None)
+            continue
+        user = next(m for m in row.messages if m.role == "user")
+        out.append(
+            Candidate(
+                id=hashlib.sha1(f"{row.id}|flawed".encode()).hexdigest()[:12],
+                job_id=row.job_id,
+                cell_id=row.cell_id,
+                round=row.round,
+                case_type=row.case_type,
+                coords=dict(row.coords),
+                messages=[
+                    Message(role="user", content=user.content),
+                    Message(role="assistant", content=text),
+                ],
+                chunk_ids=_span_chunks(ctx, row),
+                premise_evidence_id=getattr(row, "premise_evidence_id", None),
+                absent_topic=getattr(row, "absent_topic", None),
+                writer_model=writer_model,
+                cost_usd=cost / n_ok,
+            )
+        )
+    return out
+
+
+class _FlawedBatcher:
+    """Collects concurrent generate_flawed() calls of one job into Writer calls of WRITER_BATCH rows."""
+
+    def __init__(self, ctx: GenContext, size: int):
+        self.ctx = ctx
+        self.size = size
+        self.pending: list[tuple[Row, asyncio.Future]] = []
+        self.timer: asyncio.TimerHandle | None = None
+
+    def add(self, row: Row) -> asyncio.Future:
+        fut = asyncio.get_running_loop().create_future()
+        self.pending.append((row, fut))
+        if len(self.pending) >= self.size:
+            self._flush()
+        elif self.timer is None:
+            self.timer = asyncio.get_running_loop().call_later(0.05, self._flush)
+        return fut
+
+    def _flush(self) -> None:
+        if self.timer is not None:
+            self.timer.cancel()
+            self.timer = None
+        items, self.pending = self.pending[: self.size], self.pending[self.size :]
+        if self.pending:
+            self.timer = asyncio.get_running_loop().call_later(0.05, self._flush)
+        if items:
+            asyncio.ensure_future(self._run(items))
+
+    async def _run(self, items: list[tuple[Row, asyncio.Future]]) -> None:
+        try:
+            res = await generate_flawed_batch([r for r, _ in items], self.ctx)
+            for (_, fut), cand in zip(items, res, strict=True):
+                if not fut.done():
+                    fut.set_result(cand)
+        except Exception as e:
+            for _, fut in items:
+                if not fut.done():
+                    fut.set_exception(e)
+
+
+_batchers: dict[tuple[int, str], _FlawedBatcher] = {}
+
+
+async def generate_flawed(row: Row, ctx: GenContext) -> Candidate:
+    """DPO synthesize mode: one flawed reply to the SAME user turn (CONTRACTS section 4).
+
+    Concurrent calls for one job share Writer calls of WRITER_BATCH rows (call them with asyncio.gather).
+    Raises FlawedDropped when the Writer gives no usable reply for this row.
+    """
+    key = (id(asyncio.get_running_loop()), ctx.job.id)
+    b = _batchers.get(key)
+    if b is None or b.ctx is not ctx:
+        b = _batchers[key] = _FlawedBatcher(ctx, max(1, settings_for(ctx.job).writer_batch))
+    try:
+        cand = await b.add(row)
+    finally:
+        if not b.pending and b.timer is None and _batchers.get(key) is b:
+            _batchers.pop(key, None)
+    if cand is None:
+        raise FlawedDropped(f"no usable flawed reply for row {row.id}")
+    return cand
