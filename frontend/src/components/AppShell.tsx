@@ -42,7 +42,7 @@ function HealthChips() {
   }, []);
   if (down) return <span className="rounded-full border border-rose-400/30 bg-rose-400/10 px-2.5 py-1 text-[11px] text-rose-300">API offline</span>;
   if (!h) return null;
-  const bad = Object.entries(h.keys).filter(([, v]) => v !== "ok");
+  const bad = Object.entries(h.keys).filter(([provider, value]) => !["firecrawl", "composio"].includes(provider) && value !== "ok");
   if (!bad.length) return <span title="All services are reachable" className="size-2 rounded-full bg-bob-mint/80" />;
   return (
     <span className="relative">
