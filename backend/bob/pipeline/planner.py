@@ -16,6 +16,7 @@ from pathlib import Path
 from bob.config import EffectiveSettings, settings_for
 from bob.core.models import CASE_TYPES, DIFFICULTIES, Axis, Cell, Chunk, Job, Message, Plan, Topic
 from bob.llm.client import Role, Usage, get_llm, model_for
+from bob.llm.registry import caps_for
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 MERGE_SEP = " + "  # a merged topic value joins the real topic names
@@ -84,29 +85,19 @@ def normalize_weights(values: list[str], weights: dict[str, float] | None) -> di
 
 # ---------- prices (registry or ModelConfig override) ----------
 def model_prices(job: Job, role: Role) -> tuple[float | None, float | None, bool]:
-    """(price in per M, price out per M, cache supported) for the job's model of `role`."""
-    cfg = model_for(job, role)
-    p_in, p_out, cache_ok = cfg.price_in_per_m, cfg.price_out_per_m, False
-    try:
-        from bob.llm.registry import capabilities_for  # A1
-
-        caps = capabilities_for(cfg.model_id)
-        p_in = p_in if p_in is not None else caps.price_in_per_m
-        p_out = p_out if p_out is not None else caps.price_out_per_m
-        cache_ok = bool(caps.cache) and cfg.cache != "off"
-    except ImportError:
-        pass
-    return p_in, p_out, cache_ok
+    """(price in per M, price out per M, cache supported) for the job's model of `role` (registry + overrides)."""
+    caps = caps_for(model_for(job, role))
+    return caps.price_in_per_m, caps.price_out_per_m, caps.cache
 
 
 def usage_cost_usd(job: Job, role: Role, usage: Usage) -> float:
-    """Real cost of one call from its real token counts. Unknown price -> 0.0 (the ledger marks it unknown)."""
-    p_in, p_out, _ = model_prices(job, role)
-    if p_in is None or p_out is None:
-        return 0.0
-    uncached = max(0, usage.in_tokens - usage.cache_read_tokens - usage.cache_write_tokens)
-    usd = uncached * p_in + usage.cache_read_tokens * p_in * 0.1 + usage.cache_write_tokens * p_in * 1.25
-    return (usd + usage.out_tokens * p_out) / 1_000_000
+    """Real cost of one call from its real token counts (Converse in_tokens exclude the cache tokens).
+
+    Unknown price -> 0.0; the LLM client already put the role in CostSummary.price_unknown.
+    """
+    caps = caps_for(model_for(job, role))
+    usd = caps.usd(usage.in_tokens, usage.out_tokens, usage.cache_read_tokens, usage.cache_write_tokens)
+    return usd or 0.0
 
 
 # ---------- topics: cap and merge ----------
@@ -359,16 +350,20 @@ PLANNER_SCHEMA = {
                     "description": {"type": "string"},
                     "weight": {"type": "number"},
                 },
-                "required": ["name", "description"],
+                "required": ["name", "description", "weight"],
+                "additionalProperties": False,
             },
         },
         "difficulty_weights": {
             "type": "object",
             "properties": {d: {"type": "number"} for d in DIFFICULTIES},
+            "required": list(DIFFICULTIES),
+            "additionalProperties": False,
         },
         "notes": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["system_prompt", "personas", "notes"],
+    "required": ["system_prompt", "personas", "difficulty_weights", "notes"],
+    "additionalProperties": False,
 }
 
 
