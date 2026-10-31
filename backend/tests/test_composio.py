@@ -94,6 +94,22 @@ def test_notion_to_markdown_strips_notion_markup_and_keeps_text():
     assert '<div class="keep">code stays</div>' in md
 
 
+def test_notion_tables_become_markdown_tables():
+    # Same structure as a real NOTION_GET_PAGE_MARKDOWN table (2026-10-31).
+    raw = (
+        'Targets by plan\n<table header-row="true">\n<tr>\n<td>Plan</td>\n<td>First response</td>\n</tr>\n'
+        "<tr>\n<td>Hobby</td>\n<td>2 business days</td>\n</tr>\n"
+        '<tr>\n<td><span color="red">Scale</span></td>\n<td>4 | 8 hours</td>\n</tr>\n</table>\n'
+        "Business hours are 09:00 to 18:00.\n"
+        "```html\n<table><tr><td>code stays</td></tr></table>\n```"
+    )
+    md = cz.notion_to_markdown(raw)
+    assert "| Plan | First response |\n| --- | --- |\n| Hobby | 2 business days |" in md
+    assert "| Scale | 4 \\| 8 hours |" in md
+    assert "Business hours are 09:00 to 18:00." in md
+    assert "<table><tr><td>code stays</td></tr></table>" in md
+
+
 def test_unsupported_toolkit_is_a_clear_error():
     with pytest.raises(cz.ComposioError, match="not supported yet"):
         cz.toolkit_tools("salesforce")

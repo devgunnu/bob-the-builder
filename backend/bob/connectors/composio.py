@@ -222,10 +222,38 @@ NOTION_ANY_TAG = re.compile(r"</?[a-z][a-z0-9-]*(?:\s[^<>]*)?/?>")
 NOTION_ATTRS = re.compile(r"\s*\{(?:color|toggle)=\"[^\"]*\"\}")
 EMPTY_TASK = re.compile(r"^\s*[-*] \[[ xX]\]\s*$")
 FENCE = re.compile(r"^\s*(```|~~~)")
+NOTION_TABLE = re.compile(r"<table\b[^>]*>(.*?)</table>", re.DOTALL)
+NOTION_ROW = re.compile(r"<tr\b[^>]*>(.*?)</tr>", re.DOTALL)
+NOTION_CELL = re.compile(r"<t[dh]\b[^>]*>(.*?)</t[dh]>", re.DOTALL)
+
+
+def _cell(raw: str) -> str:
+    text = NOTION_ANY_TAG.sub("", raw)
+    return " ".join(text.split()).replace("|", "\\|")
+
+
+def _notion_table(match: re.Match[str]) -> str:
+    """<table><tr><td>..</td></tr></table> -> a markdown pipe table (first row = header)."""
+    rows = [[_cell(c) for c in NOTION_CELL.findall(r)] for r in NOTION_ROW.findall(match.group(1))]
+    rows = [r for r in rows if r]
+    if not rows:
+        return ""
+    width = max(len(r) for r in rows)
+    rows = [r + [""] * (width - len(r)) for r in rows]
+    lines = ["| " + " | ".join(rows[0]) + " |", "| " + " | ".join(["---"] * width) + " |"]
+    lines += ["| " + " | ".join(r) + " |" for r in rows[1:]]
+    return "\n" + "\n".join(lines) + "\n"
+
+
+def _tables_outside_code(text: str) -> str:
+    parts = re.split(r"(^\s*(?:```|~~~).*?^\s*(?:```|~~~)[^\n]*$)", text, flags=re.MULTILINE | re.DOTALL)
+    return "".join(part if i % 2 else NOTION_TABLE.sub(_notion_table, part) for i, part in enumerate(parts))
 
 
 def notion_to_markdown(text: str) -> str:
-    """Strip Notion-only markup (spans, columns, placeholders, color attrs, empty to-dos)."""
+    """Strip Notion-only markup (spans, columns, placeholders, color attrs, empty to-dos);
+    turn Notion <table> blocks into markdown tables."""
+    text = _tables_outside_code(text)
     out: list[str] = []
     in_code = False
     for line in text.splitlines():
