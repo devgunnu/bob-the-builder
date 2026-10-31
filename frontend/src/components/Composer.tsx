@@ -77,7 +77,7 @@ export function Composer({
   const value = controlled ?? own;
   const setValue = (v: string) => (onValueChange ? onValueChange(v) : setOwn(v));
   const [files, setFiles] = useState<File[]>([]);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const showGhost = variant === "landing" && !value && !locked;
   const { ghost, full } = useGhostText(showGhost);
@@ -152,24 +152,53 @@ export function Composer({
             <div className="truncate py-2 text-[17px]">{locked}</div>
           ) : (
             <>
-              <input
-                ref={inputRef}
-                value={value}
-                disabled={disabled}
-                onChange={(e) => setValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") submit();
-                  if ((e.key === "Tab" || e.key === "ArrowRight") && showGhost) {
-                    e.preventDefault();
-                    setValue(full);
-                  }
-                }}
-                aria-label={variant === "landing" ? "Tell Bob what to build" : "Message Bob"}
-                placeholder={placeholder ?? (variant === "workspace" ? "Describe the dataset you want…" : "")}
-                className={`w-full bg-transparent py-2 outline-none ${
-                  variant === "landing" ? "text-[17px]" : "text-[15px]"
-                } ${dark ? "placeholder:text-dim" : ""}`}
-              />
+              {variant === "workspace" ? (
+                <textarea
+                  ref={(el) => {
+                    inputRef.current = el;
+                    if (el) {
+                      el.style.height = "auto";
+                      el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
+                    }
+                  }}
+                  rows={1}
+                  value={value}
+                  disabled={disabled}
+                  onChange={(e) => {
+                    setValue(e.target.value);
+                    e.target.style.height = "auto";
+                    e.target.style.height = `${Math.min(e.target.scrollHeight, 96)}px`;
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      submit();
+                    }
+                  }}
+                  aria-label="Your goal"
+                  placeholder={placeholder ?? "Describe the dataset you want…"}
+                  className="no-ring scroll-thin block w-full resize-none bg-transparent py-2 text-[15px] leading-relaxed outline-none placeholder:text-dim"
+                />
+              ) : (
+                <input
+                  ref={(el) => {
+                    inputRef.current = el;
+                  }}
+                  value={value}
+                  disabled={disabled}
+                  onChange={(e) => setValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") submit();
+                    if ((e.key === "Tab" || e.key === "ArrowRight") && showGhost) {
+                      e.preventDefault();
+                      setValue(full);
+                    }
+                  }}
+                  aria-label="Tell Bob what to build"
+                  placeholder={placeholder ?? ""}
+                  className="no-ring w-full bg-transparent py-2 text-[17px] outline-none"
+                />
+              )}
               {showGhost && (
                 <div className="pointer-events-none absolute inset-0 flex items-center overflow-hidden text-[17px] text-bob-navy/35">
                   <span className="caret truncate">{ghost}</span>

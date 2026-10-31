@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { motion } from "motion/react";
 import type { Axis, Cell } from "../../api/types";
-import { caseLabel } from "../ui";
+import { CaseHeader, caseLabel } from "../ui";
 
 export interface GridCell {
   coords: Record<string, string>;
@@ -114,8 +114,8 @@ export function Heatgrid({ axes, cells, highlight, onCellClick, compact, filters
             <tr>
               <th />
               {cases.map((c) => (
-                <th key={c} className="px-1 pb-1 text-left text-[11px] font-medium capitalize text-dim">
-                  {caseLabel(c)}
+                <th key={c} className="px-1 pb-1 text-left text-[11.5px] font-medium text-white/70">
+                  <CaseHeader c={c} />
                 </th>
               ))}
             </tr>

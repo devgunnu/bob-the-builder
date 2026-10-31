@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import { ArrowLeft, CheckCircle2, ExternalLink, Gavel, Loader2, ScanEye, XCircle } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { CheckResult, Row, SpanRef } from "../api/types";
 import { AppShell } from "../components/AppShell";
-import { ErrorBanner, Panel, caseLabel, usd } from "../components/ui";
+import { ErrorBanner, Panel, caseLabel, usd, useTitle } from "../components/ui";
 
 // Human labels for CONTRACTS section 4 check names.
 const CHECK_LABEL: Record<string, string> = {
@@ -91,6 +91,13 @@ export default function RowInspector() {
   const { id, rowId } = useParams();
   const [row, setRow] = useState<Row | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
+  const nav = useNavigate();
+  useTitle("Row");
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && nav(`/jobs/${id}/build`);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [id, nav]);
   useEffect(() => {
     setRow(null);
     api.row(id!, rowId!).then(setRow).catch(setError);
@@ -100,10 +107,10 @@ export default function RowInspector() {
   const notInDocs = row?.checks.find((c) => c.name === "jev.not_in_docs");
 
   return (
-    <AppShell pose={row ? (kept ? "idea" : "think") : "think"} title="Row">
+    <AppShell pose={row ? (kept ? "idea" : "think") : "think"} title="Row" step="build" status="building">
       <div className="mx-auto max-w-6xl px-4 py-5">
         <Link to={`/jobs/${id}/build`} className="mb-3 inline-flex items-center gap-1 text-[12.5px] text-dim hover:text-white">
-          <ArrowLeft className="size-4" /> Back to the build
+          <ArrowLeft className="size-4" /> Back to the build <kbd className="ml-1 rounded border border-line px-1 font-mono text-[10px]">Esc</kbd>
         </Link>
         <ErrorBanner error={error} title="Couldn't load this row" />
         {!row && !error && <div className="grid place-items-center py-20 text-dim"><Loader2 className="size-6 animate-spin" /></div>}

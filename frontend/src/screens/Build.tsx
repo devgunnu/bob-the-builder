@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, CheckCircle2, Loader2, ShieldAlert, XCircle } from "lucide-react";
@@ -6,9 +6,25 @@ import { api, ApiError } from "../api/client";
 import type { RowEvent } from "../api/types";
 import { useJobStream } from "../api/useJobStream";
 import { AppShell } from "../components/AppShell";
-import type { BobPose } from "../components/Bob";
-import { Empty, ErrorBanner, caseLabel, usd } from "../components/ui";
+import { Bob, type BobPose } from "../components/Bob";
+import { ConfirmButton, Empty, ErrorBanner, caseLabel, usd, useTitle } from "../components/ui";
 import { Heatgrid, toGridCells } from "../components/viz/Heatgrid";
+
+// Time left from the recent rate of kept rows (visibility of system status).
+function useEta(kept: number, target: number, finished: boolean): string | null {
+  const samples = useRef<{ t: number; k: number }[]>([]);
+  const now = Date.now();
+  const list = samples.current;
+  if (!list.length || list[list.length - 1].k !== kept) list.push({ t: now, k: kept });
+  while (list.length > 2 && now - list[0].t > 90_000) list.shift();
+  if (finished || list.length < 3 || kept >= target) return null;
+  const first = list[0];
+  const rate = (kept - first.k) / ((now - first.t) / 1000);
+  if (rate <= 0) return null;
+  const secs = (target - kept) / rate;
+  if (secs < 60) return "under a minute left";
+  return `about ${Math.round(secs / 60)} min left`;
+}
 
 function topReasons(rows: RowEvent[]): [string, number][] {
   const m = new Map<string, number>();
@@ -118,10 +134,12 @@ export default function BuildScreen() {
         : stage
           ? `${s.lastStage === "verify" ? "Checking rows" : s.lastStage === "generate" ? "Writing rows" : `Working on ${s.lastStage}`}${stage.detail ? ` · ${stage.detail}` : ""}`
           : s.detail || "Starting…";
+  const eta = useEta(kept, target, done || stopped);
+  useTitle(done ? "Build done" : `Building ${kept}/${target}`);
   const costTitle = s.cost ? Object.entries(s.cost.by_model).map(([k, m]) => `${k}: ${usd(m.usd)} (${m.calls} calls)`).join("\n") : "";
 
   return (
-    <AppShell pose={pose} title={s.job?.spec.goal}>
+    <AppShell pose={pose} title={s.job?.spec.goal} step="build" status={s.status} hasReport={!!s.report}>
       <div className="mx-auto max-w-6xl space-y-4 px-4 py-6">
         <ErrorBanner error={s.loadError} title="Couldn't load this job" />
         <ErrorBanner error={s.error} title="The build hit an error" />
@@ -129,7 +147,8 @@ export default function BuildScreen() {
 
         {/* one headline, one bar, one sentence */}
         <section className="rounded-2xl bg-panel p-5">
-          <div className="flex flex-wrap items-end gap-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <Bob pose={done ? "hero" : stopped ? "idle" : "think"} size={64} float={false} still className="hidden shrink-0 sm:block" />
             <div className="min-w-0 flex-1">
               <div className="font-display text-[34px] font-extrabold leading-none tabular-nums">
                 {kept.toLocaleString()} <span className="text-[18px] font-bold text-dim">of {target.toLocaleString()} rows kept</span>
@@ -137,6 +156,7 @@ export default function BuildScreen() {
               <div className="mt-2 flex items-center gap-2 text-[13px] text-dim">
                 {!done && !stopped && <Loader2 className="size-3.5 animate-spin text-bob-sky" />}
                 <span className="truncate">{sentence}</span>
+                {eta && <span className="shrink-0 text-white/60">· {eta}</span>}
               </div>
             </div>
             <div className="text-right" title={costTitle}>
@@ -174,7 +194,7 @@ export default function BuildScreen() {
 
         {!done && !stopped && (
           <div className="text-center">
-            <button onClick={() => api.cancel(id!).catch(setCancelErr)} className="text-[12.5px] text-dim hover:text-rose-300">Cancel this job</button>
+            <ConfirmButton label="Cancel this job" confirm="Stop building? Rows kept so far stay saved." onConfirm={() => api.cancel(id!).catch(setCancelErr)} />
           </div>
         )}
       </div>

@@ -7,7 +7,7 @@ import type { PresetInfo, Report, Row } from "../api/types";
 import { useJobStream } from "../api/useJobStream";
 import { AppShell } from "../components/AppShell";
 import { Bob } from "../components/Bob";
-import { Button, Empty, ErrorBanner, Panel, pct, usd } from "../components/ui";
+import { Button, Empty, ErrorBanner, Panel, pct, usd, useTitle } from "../components/ui";
 import { Bars } from "../components/viz/Bars";
 import { Heatgrid, type GridCell } from "../components/viz/Heatgrid";
 
@@ -189,6 +189,7 @@ export default function ReportScreen() {
   const s = useJobStream(id);
   const r = s.report;
   const [tab, setTab] = useState<RTab>("coverage");
+  useTitle("Report");
 
   const coverageCells: GridCell[] = useMemo(
     () => (r ? r.coverage.map((c) => ({ id: c.cell_id, coords: c.coords, enabled: true, target: c.target, kept: c.kept, rejected: c.rejected, generated: c.kept + c.rejected, judged: 0 })) : []),
@@ -208,7 +209,7 @@ export default function ReportScreen() {
   ];
 
   return (
-    <AppShell pose={r ? "hero" : "idle"} title={s.job?.spec.goal}>
+    <AppShell pose={r ? "hero" : "idle"} title={s.job?.spec.goal} step="report" status={s.status} hasReport={!!r}>
       <div className="mx-auto max-w-5xl px-4 py-8">
         <ErrorBanner error={s.loadError} title="Couldn't load this job" />
         {!r ? (
