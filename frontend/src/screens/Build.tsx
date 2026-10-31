@@ -311,7 +311,7 @@ export default function BuildScreen() {
               </div>
               <div className="mt-2 flex items-center gap-2 text-[13px] text-dim">
                 {!done && !stopped && <Loader2 className="size-3.5 animate-spin text-bob-sky" />}
-                <span className="truncate">{sentence}</span>
+                <span className="truncate" aria-live="polite">{sentence}</span>
                 {eta && <span className="shrink-0 text-white/60">· {eta}</span>}
               </div>
             </div>
