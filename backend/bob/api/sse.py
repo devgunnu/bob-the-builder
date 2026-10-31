@@ -27,15 +27,13 @@ RETRY_MS = 1000
 
 
 def event_parts(event: Any) -> tuple[int, str, Any]:
-    """(seq, type, data) of one event from Orchestrator.subscribe (assumption: see api/deps.py)."""
-    return int(event.seq), str(event.type), event.data
+    """(seq, type, data) of one `Event(id, type, data)` from Orchestrator.subscribe."""
+    return int(event.id), str(event.type), event.data
 
 
 def parse_last_event_id(request: Request) -> int | None:
     """Header Last-Event-ID, else the last_event_id query param. Bad values replay from start."""
-    raw = request.headers.get("Last-Event-ID") or request.query_params.get(
-        "last_event_id"
-    )
+    raw = request.headers.get("Last-Event-ID") or request.query_params.get("last_event_id")
     if raw is None:
         return None
     try:
@@ -50,9 +48,7 @@ def format_event(seq: int, type_: str, data: Any) -> str:
     return f"id: {seq}\nevent: {type_}\ndata: {payload}\n\n"
 
 
-async def event_stream(
-    events: AsyncIterator[Any], *, heartbeat_s: float, max_s: float
-) -> AsyncIterator[str]:
+async def event_stream(events: AsyncIterator[Any], *, heartbeat_s: float, max_s: float) -> AsyncIterator[str]:
     """Turn orchestrator events into SSE text, with heartbeats and a max lifetime."""
     loop = asyncio.get_running_loop()
     deadline = loop.time() + max_s
@@ -85,9 +81,7 @@ async def event_stream(
                 await aclose()
 
 
-def sse_response(
-    events: AsyncIterator[Any], *, heartbeat_s: float, max_s: float
-) -> StreamingResponse:
+def sse_response(events: AsyncIterator[Any], *, heartbeat_s: float, max_s: float) -> StreamingResponse:
     return StreamingResponse(
         event_stream(events, heartbeat_s=heartbeat_s, max_s=max_s),
         media_type="text/event-stream",

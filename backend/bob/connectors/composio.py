@@ -21,7 +21,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any
 
 from composio import Composio
 
@@ -31,7 +31,6 @@ if TYPE_CHECKING:
     from bob.core.models import Document, SourceSpec
 
 Progress = Callable[[int, int, str], Awaitable[None]]
-T = TypeVar("T")
 
 DEFAULT_USER_PREFIX = "bob-"
 ACTIVE = "ACTIVE"
@@ -93,13 +92,11 @@ def toolkit_tools(toolkit: str) -> ToolkitTools:
     tools = TOOLKITS.get(toolkit)
     if tools is None:
         supported = ", ".join(sorted(TOOLKITS))
-        raise ComposioError(
-            f"toolkit {toolkit!r} is not supported yet (supported: {supported})"
-        )
+        raise ComposioError(f"toolkit {toolkit!r} is not supported yet (supported: {supported})")
     return tools
 
 
-async def _run(fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+async def _run[T](fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     return await asyncio.to_thread(fn, *args, **kwargs)
 
 
@@ -121,9 +118,7 @@ async def _execute(
         version=version,
     )
     if not _field(result, "successful", False):
-        raise ComposioError(
-            f"{slug} failed: {_field(result, 'error') or 'no error message'}"
-        )
+        raise ComposioError(f"{slug} failed: {_field(result, 'error') or 'no error message'}")
     return _field(result, "data", {})
 
 
@@ -196,8 +191,7 @@ async def connections(*, user_id: str) -> list[dict[str, Any]]:
         if slug in TOOLKITS and slug not in active:
             active[slug] = str(item.id)
     return [
-        {"toolkit": slug, "connected": slug in active, "account_id": active.get(slug)}
-        for slug in TOOLKITS
+        {"toolkit": slug, "connected": slug in active, "account_id": active.get(slug)} for slug in TOOLKITS
     ]
 
 
@@ -207,9 +201,7 @@ async def connections(*, user_id: str) -> list[dict[str, Any]]:
 def notion_title(page: dict[str, Any]) -> str:
     for prop in (page.get("properties") or {}).values():
         if isinstance(prop, dict) and prop.get("type") == "title":
-            text = "".join(
-                part.get("plain_text", "") for part in prop.get("title") or []
-            )
+            text = "".join(part.get("plain_text", "") for part in prop.get("title") or [])
             if text.strip():
                 return text.strip()
     return "Untitled"
@@ -257,9 +249,7 @@ def notion_to_markdown(text: str) -> str:
 # ---------- browse + fetch ----------
 
 
-async def browse(
-    toolkit: str, account_id: str, q: str, *, user_id: str
-) -> list[dict[str, str]]:
+async def browse(toolkit: str, account_id: str, q: str, *, user_id: str) -> list[dict[str, str]]:
     """Pages the user's connection can read, matching `q` in the title (empty q lists all)."""
     tools = toolkit_tools(toolkit)
     await _owned_account(account_id, user_id)
@@ -274,15 +264,11 @@ async def browse(
     for page in data.get("results") or []:
         if page.get("object") != "page" or page.get("archived") or page.get("in_trash"):
             continue
-        items.append(
-            {"id": str(page["id"]), "title": notion_title(page), "kind": "page"}
-        )
+        items.append({"id": str(page["id"]), "title": notion_title(page), "kind": "page"})
     return items
 
 
-async def fetch(
-    spec: SourceSpec, job_id: str, progress: Progress, *, user_id: str
-) -> list[Document]:
+async def fetch(spec: SourceSpec, job_id: str, progress: Progress, *, user_id: str) -> list[Document]:
     """kind="composio": fetch the selected pages as Documents (uri notion://<page_id>)."""
     from bob.core.models import Document
 
@@ -296,14 +282,9 @@ async def fetch(
     if not page_ids:
         raise ComposioError(f"{toolkit} source has no page_ids in scope")
     if len(page_ids) > MAX_FETCH_PAGES:
-        raise ComposioError(
-            f"too many pages ({len(page_ids)}); the limit is {MAX_FETCH_PAGES}"
-        )
+        raise ComposioError(f"too many pages ({len(page_ids)}); the limit is {MAX_FETCH_PAGES}")
 
-    titles = {
-        item["id"]: item["title"]
-        for item in await browse(toolkit, account_id, "", user_id=user_id)
-    }
+    titles = {item["id"]: item["title"] for item in await browse(toolkit, account_id, "", user_id=user_id)}
     documents: list[Document] = []
     await progress(0, len(page_ids), f"fetching {len(page_ids)} {toolkit} pages")
     for index, page_id in enumerate(page_ids, start=1):

@@ -19,7 +19,6 @@ from bob.api.errors import ApiError, not_found
 from bob.api.sse import parse_last_event_id, sse_response
 from bob.connectors.upload import UploadError, save_uploads
 from bob.core.models import Job, JobSpec, Plan, Row, UserProfile
-from bob.core.runner import RunnerBusy
 from bob.orchestrator import Orchestrator
 
 router = APIRouter()
@@ -79,9 +78,7 @@ async def me(user: User) -> UserProfile:
 
 
 @router.post("/uploads")
-async def upload_files(
-    request: Request, files: list[UploadFile], _: User
-) -> dict[str, Any]:
+async def upload_files(request: Request, files: list[UploadFile], _: User) -> dict[str, Any]:
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > MAX_UPLOAD_BODY_BYTES:
         raise ApiError(413, "upload too large", detail="the request body limit is 6 MB")
@@ -91,9 +88,7 @@ async def upload_files(
         data = await upload.read()
         total += len(data)
         if total > MAX_UPLOAD_BODY_BYTES:
-            raise ApiError(
-                413, "upload too large", detail="the request body limit is 6 MB"
-            )
+            raise ApiError(413, "upload too large", detail="the request body limit is 6 MB")
         payload.append((upload.filename or "file", data))
     try:
         saved = await save_uploads(payload)
@@ -110,14 +105,8 @@ async def upload_files(
 
 @router.post("/jobs")
 async def create_job(spec: JobSpec, user: User, orchestrator: Orch) -> Job:
-    if user.bedrock_verified_at is None:
-        raise ApiError(412, "connect AWS first")
-    if user.models_verified_at is None:
-        raise ApiError(412, "verify models first")
-    try:
-        return await orchestrator.create_job(spec, user)
-    except RunnerBusy as exc:
-        raise ApiError(429, "too many running jobs", detail=str(exc) or None) from exc
+    """412 (AWS / models not verified) and 429 (runner busy) come from the orchestrator."""
+    return await orchestrator.create_job(spec, user)
 
 
 @router.get("/jobs")
@@ -151,14 +140,10 @@ async def cancel_job(job_id: str, user: User, orchestrator: Orch) -> Job:
 
 
 @router.get("/jobs/{job_id}/events")
-async def job_events(
-    job_id: str, request: Request, user: User, orchestrator: Orch
-) -> StreamingResponse:
+async def job_events(job_id: str, request: Request, user: User, orchestrator: Orch) -> StreamingResponse:
     await owned_job(job_id, user, orchestrator)
     events = orchestrator.subscribe(job_id, parse_last_event_id(request))
-    return sse_response(
-        events, heartbeat_s=settings.sse_heartbeat_s, max_s=settings.sse_max_s
-    )
+    return sse_response(events, heartbeat_s=settings.sse_heartbeat_s, max_s=settings.sse_max_s)
 
 
 # ---------- rows ----------

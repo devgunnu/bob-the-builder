@@ -20,7 +20,7 @@ from bob.api.sse import event_stream, format_event, parse_last_event_id
 
 @dataclass
 class Event:
-    seq: int
+    id: int
     type: str
     data: dict[str, Any] = field(default_factory=dict)
 
@@ -41,15 +41,11 @@ async def collect(stream: AsyncIterator[str], limit: int = 50) -> list[str]:
 
 def request_with(headers: dict[str, str] | None = None, query: str = "") -> Request:
     raw_headers = [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()]
-    return Request(
-        {"type": "http", "headers": raw_headers, "query_string": query.encode()}
-    )
+    return Request({"type": "http", "headers": raw_headers, "query_string": query.encode()})
 
 
 def test_format_event_matches_contract_wire_format():
-    text = format_event(
-        7, "job.status", {"status": "reading", "detail": "chunking 5 docs"}
-    )
+    text = format_event(7, "job.status", {"status": "reading", "detail": "chunking 5 docs"})
     lines = text.split("\n")
     assert lines[0] == "id: 7"
     assert lines[1] == "event: job.status"
@@ -81,9 +77,7 @@ async def test_heartbeat_when_idle_and_close_at_max_lifetime():
     queue: asyncio.Queue[Event | None] = asyncio.Queue()
     loop = asyncio.get_running_loop()
     start = loop.time()
-    chunks = await collect(
-        event_stream(from_queue(queue), heartbeat_s=0.05, max_s=0.23)
-    )
+    chunks = await collect(event_stream(from_queue(queue), heartbeat_s=0.05, max_s=0.23))
     elapsed = loop.time() - start
     assert chunks[0] == "retry: 1000\n\n"
     pings = [c for c in chunks if c == ": ping\n\n"]

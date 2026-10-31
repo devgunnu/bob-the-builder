@@ -539,7 +539,7 @@ class Decision(BaseModel):
 
 async def decide(state: str, questions: list[Question], purpose: str, *, job: Job) -> dict[str, Decision]
 ```
-- Endpoint: OpenRouter `POST /api/alpha/decisions`, model `typesafe/jev-1.13-20260917` (check 1.14). Raw `httpx`, no OpenAI SDK, no `temperature` / `max_tokens`. **Research the request shape at first use (owner A2, by T+0:20; default: this shape, `jev-1.13`).**
+- Endpoint: the **direct Jev API** (not OpenRouter, D34), base URL `JEV_BASE_URL`, key `JEV_API_KEY` (Jev API console key), model `JEV_MODEL` (default `typesafe/jev-1.13-20260917`; check 1.14 and the model name form that the direct API uses). Raw `httpx`, no OpenAI SDK, no `temperature` / `max_tokens`. `JEV_BASE_URL` has no default (empty): **A2 confirms the base URL, the path, the auth header and the request/response shape at the first real call (by T+0:20)**, then sets the value in `.env` and sends it to A1 for `.env.example` and the `config.py` default. Until then, the Question/Decision shape above stays the contract.
 - Fallback chain on 3 failures in a row: Noul and Choice -> ScaleDown Classify -> fallback model JSON answer. Score has no Classify equivalent, so Score goes straight to the fallback model JSON answer. The fallback model = `get_llm(job, "fallback")` (default: the writer model). Log to `CostSummary.fallbacks_used` and emit a `log` event; the UI shows a badge.
 - `purpose` is a ledger tag: `triage`, `verify`, `probe`.
 
@@ -793,8 +793,10 @@ BOB_DEFAULT_JUDGE_MODEL=bedrock:global.anthropic.claude-sonnet-5-5
 BOB_DEFAULT_FALLBACK_MODEL=                             # empty = the writer model
 BOB_MODEL_REGISTRY=bob/llm/registry.json                # model capabilities + default prices
 BOB_KMS_KEY_ID                                          # aws: KMS key (alias/bob-user-keys) that encrypts user API keys (P1)
-OPENROUTER_API_KEY                                     # Jev (and ScaleDown via OpenRouter)
+JEV_API_KEY                                            # Jev API console key; Jev is called through its direct API (D34)
+JEV_BASE_URL=                                          # no default; A2 confirms the base URL at the first real call
 JEV_MODEL=typesafe/jev-1.13-20260917
+OPENROUTER_API_KEY=                                    # optional: only for ScaleDown via OpenRouter (section 5); not used by Jev
 SCALEDOWN_API_KEY, SCALEDOWN_BASE_URL=https://api.scaledown.xyz
 FIRECRAWL_API_KEY
 COMPOSIO_API_KEY
@@ -840,7 +842,7 @@ BOB_EMBED_MODEL_PATH=/opt/models/potion-base-8M   # baked into the image; no Hug
 # Lambda only (set by CDK): AWS_LWA_INVOKE_MODE=response_stream, AWS_LWA_PORT=8080, AWS_LWA_READINESS_CHECK_PATH=/api/ping
 ```
 
-In aws mode, `config.py` loads the secret JSON from `BOB_SECRET_ARN` into the environment before it reads Settings (helper `bob/aws/secrets.py`, A5). The secret `bob/keys` holds OPENROUTER_API_KEY, SCALEDOWN_API_KEY, FIRECRAWL_API_KEY, COMPOSIO_API_KEY and the other keys. Bedrock uses no stored keys: in aws mode it assumes the user's `BobBedrockAccess` role (section 14).
+In aws mode, `config.py` loads the secret JSON from `BOB_SECRET_ARN` into the environment before it reads Settings (helper `bob/aws/secrets.py`, A5). The secret `bob/keys` holds JEV_API_KEY, SCALEDOWN_API_KEY, FIRECRAWL_API_KEY, COMPOSIO_API_KEY and the other keys. Bedrock uses no stored keys: in aws mode it assumes the user's `BobBedrockAccess` role (section 14).
 
 `settings_for(job) -> EffectiveSettings` (A1, `config.py`): the env defaults above, with each non-None `JobSpec.options` field on top. All pipeline code reads thresholds through it. The manifest records the effective values (section 11).
 
@@ -897,7 +899,7 @@ Local mode (`BOB_ENV=local`) stays the default. `BOB_ENV=aws` switches every bac
                                   └ SSE ◄── polls DynamoDB events every 500 ms
  Fargate worker = same image, CMD `python -m bob.worker <job_id> <mode>`: ingest -> read -> plan -> wait for approval -> build loop -> report -> export -> done -> exit
  State:   DynamoDB table `bob` (job summary + control, events, rows)  +  S3 data bucket (job.json, docs, chunks, exports, uploads, cache)
- Secrets: one Secrets Manager secret `bob/keys` (JSON: OPENROUTER_API_KEY, SCALEDOWN_API_KEY, FIRECRAWL_API_KEY, COMPOSIO_API_KEY, ...). Bedrock uses no stored keys: STS AssumeRole into each user's BobBedrockAccess role.
+ Secrets: one Secrets Manager secret `bob/keys` (JSON: JEV_API_KEY, SCALEDOWN_API_KEY, FIRECRAWL_API_KEY, COMPOSIO_API_KEY, ...). Bedrock uses no stored keys: STS AssumeRole into each user's BobBedrockAccess role.
  Auth:    Cognito user pool (stack BobData). The API checks the access token (api/auth.py).
  KMS:     one KMS key (stack BobData, alias alias/bob-user-keys) encrypts user API keys for openai_compatible models (P1).
  Bedrock: runs in the USER's AWS account and region (section 14). Bob's hosting region (Lambda, Fargate, DynamoDB, S3, Cognito) is separate.

@@ -142,8 +142,7 @@ def _rate_limit_rows() -> tuple[list[str], list[list[str]]]:
     rows = [
         [c.strip() for c in line.strip("|").split("|")]
         for line in smoke_body("rate-limits.md").splitlines()
-        if re.match(r"^\| (Free|Hobby|Standard|Growth|Scale) \| \d", line)
-        and len(line.split("|")) == 10
+        if re.match(r"^\| (Free|Hobby|Standard|Growth|Scale) \| \d", line) and len(line.split("|")) == 10
     ]
     return header, rows
 
