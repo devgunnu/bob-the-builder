@@ -330,3 +330,12 @@ def test_s3_put_url_signs_size_and_type(monkeypatch):
     query = parse_qs(urlsplit(url).query)
     assert query["X-Amz-SignedHeaders"] == ["content-length;content-type;host"]
     assert query["X-Amz-Expires"] == ["900"]
+
+
+async def test_openai_compatible_keys_are_501_not_500(client):
+    # P1: A1's update_models raises NotImplementedError for api_keys; the route says so plainly.
+    await as_user("keys-user")
+    me = (await client.get("/api/me")).json()
+    r = await client.put("/api/me/models", json={**me["models"], "api_keys": {"writer": "sk-test"}})
+    assert r.status_code == 501 and "not available yet" in r.json()["error"]
+    assert "sk-test" not in r.text

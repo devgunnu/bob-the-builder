@@ -14,12 +14,12 @@ function readingPose(stage: StageName | null): "read" | "think" {
 }
 
 const READ_STAGES: { id: StageName; label: string }[] = [
-  { id: "fetch", label: "Fetch sources" },
-  { id: "chunk", label: "Chunk and filter" },
-  { id: "triage", label: "Jev triage" },
-  { id: "topics", label: "Find topics" },
-  { id: "evidence", label: "Extract evidence" },
-  { id: "plan", label: "Draft the plan" },
+  { id: "fetch", label: "Fetching pages" },
+  { id: "chunk", label: "Splitting into passages" },
+  { id: "triage", label: "Sorting useful passages" },
+  { id: "topics", label: "Finding topics" },
+  { id: "evidence", label: "Collecting facts" },
+  { id: "plan", label: "Drafting the plan" },
 ];
 
 function ReadingView({ s, onCancel }: { s: JobStream; onCancel: () => void }) {
@@ -280,23 +280,25 @@ function PlanEditor({ s, jobId }: { s: JobStream; jobId: string }) {
     }
   };
 
+  const action = locked ? (
+    <Link to={`/jobs/${jobId}/build`} className="block rounded-xl bg-bob-blue px-4 py-2.5 text-center text-[14px]">Open the build</Link>
+  ) : (
+    <Button tone="yellow" className="w-full px-6 py-3 text-[16px]" busy={busy} disabled={enabledTarget === 0} onClick={start}>
+      <Play className="size-4" /> Start building
+    </Button>
+  );
+
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
+    <div className="mx-auto max-w-4xl px-4 pt-8 pb-4 sm:pb-8">
       <div className="mb-6 flex flex-wrap items-end gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="font-display text-[28px] font-extrabold leading-tight">Here's the plan</h1>
+          <h1 className="font-display text-[24px] font-extrabold leading-tight sm:text-[28px]">Here's the plan</h1>
           <p className="mt-1 text-[14.5px] text-white/75">
             Bob will write <b className="text-white">{enabledTarget.toLocaleString()} rows</b> across {count("topic")} topics, {count("persona")} kinds of user and {count("case_type")} kinds of question, for about{" "}
             <b className={est > budget ? "text-rose-300" : "text-white"}>{usd(est, 2)}</b> of your {usd(budget, 2)} budget.
           </p>
         </div>
-        {locked ? (
-          <Link to={`/jobs/${jobId}/build`} className="rounded-xl bg-bob-blue px-4 py-2.5 text-[14px]">Open the build</Link>
-        ) : (
-          <Button tone="yellow" className="px-6 py-3 text-[16px]" busy={busy} disabled={enabledTarget === 0} onClick={start}>
-            <Play className="size-4" /> Start building
-          </Button>
-        )}
+        <div className="hidden sm:block">{action}</div>
       </div>
       {error && <div className="mb-4"><ErrorBanner error={error} title="Couldn't start the build" /></div>}
 
@@ -348,6 +350,7 @@ function PlanEditor({ s, jobId }: { s: JobStream; jobId: string }) {
           </section>
         </div>
       )}
+      <div className="sticky bottom-0 -mx-4 mt-6 border-t border-line bg-void/90 px-4 py-3 backdrop-blur sm:hidden">{action}</div>
     </div>
   );
 }

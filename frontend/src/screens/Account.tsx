@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { Check, Copy, Download, Loader2 } from "lucide-react";
 import { api, ApiError } from "../api/client";
-import type { AwsSetup, ModelRoles, UserProfile } from "../api/types";
+import type { AvailableModel, AwsSetup, BedrockAccess, ModelRoles, UserProfile } from "../api/types";
 import { AppShell } from "../components/AppShell";
 import { Bob } from "../components/Bob";
 import { ModelsEditor } from "../components/ModelsEditor";
@@ -57,6 +57,21 @@ export default function AccountScreen() {
   const [modelBusy, setModelBusy] = useState(false);
   const [modelResults, setModelResults] = useState<Record<string, string> | null>(null);
   const [modelErr, setModelErr] = useState<ApiError | null>(null);
+  const [available, setAvailable] = useState<AvailableModel[] | null>(null);
+  const [availBusy, setAvailBusy] = useState(false);
+  const [availErr, setAvailErr] = useState<ApiError | null>(null);
+  const loadAvailable = async () => {
+    setAvailBusy(true);
+    setAvailErr(null);
+    try {
+      // Only ids that can be called directly: inference profiles and on-demand models.
+      setAvailable((await api.availableModels()).models.filter((m) => m.on_demand));
+    } catch (e) {
+      setAvailErr(e as ApiError);
+    } finally {
+      setAvailBusy(false);
+    }
+  };
 
   useEffect(() => {
     Promise.all([api.me(), api.awsSetup()])
@@ -78,7 +93,10 @@ export default function AccountScreen() {
     setAwsBusy(true);
     setAwsMsg(null);
     try {
-      const p = await api.saveAws({ mode: "assume_role", role_arn: roleArn.trim(), external_id: me?.external_id ?? null, region: region.trim() });
+      const access: BedrockAccess = localMode
+        ? { mode: "default", region: region.trim() }
+        : { mode: "assume_role", role_arn: roleArn.trim(), external_id: me?.external_id ?? null, region: region.trim() };
+      const p = await api.saveAws(access);
       setMe(p);
       const v = await api.verifyAws();
       setAwsMsg(v.ok ? { ok: true, text: "Bob can reach Bedrock in your account." } : { ok: false, text: v.error ?? "Verification failed." });
@@ -110,6 +128,8 @@ export default function AccountScreen() {
   };
 
   const awsOk = !!me?.bedrock_verified_at;
+  // Local development (BOB_BEDROCK_AUTH=default): Bob uses this machine's AWS credentials, no role.
+  const localMode = me?.bedrock?.mode === "default";
   const modelsOk = !!me?.models_verified_at;
 
   return (
@@ -135,6 +155,18 @@ export default function AccountScreen() {
         {me && setup && (
           <div className="space-y-5">
             <StepCard id="aws" n={1} title="Connect AWS" done={awsOk}>
+              {localMode ? (
+                <div className="space-y-3 text-[13.5px]">
+                  <p className="text-white/85">Local mode. Bob calls Bedrock with this machine's AWS credentials, so there is no role to deploy. Pick the region and check it.</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input value={region} onChange={(e) => setRegion(e.target.value)} placeholder="us-east-1" aria-label="Bedrock region" className="w-40 rounded-lg border border-line bg-transparent px-3 py-2 font-mono text-[12.5px] outline-none" />
+                    <Button busy={awsBusy} disabled={!region.trim()} onClick={saveAws}>Check access</Button>
+                  </div>
+                  {awsMsg && (
+                    <div className={`rounded-lg px-3 py-2 text-[12.5px] ${awsMsg.ok ? "bg-bob-mint/10 text-bob-mint" : "bg-rose-400/10 font-mono text-rose-200"}`}>{awsMsg.text}</div>
+                  )}
+                </div>
+              ) : (
               <ol className="space-y-5 text-[13.5px]">
                 <li>
                   <div className="mb-2 text-white/85"><b className="text-white">a.</b> Download the access template. It creates one role that can only call Bedrock.</div>
@@ -146,7 +178,10 @@ export default function AccountScreen() {
                   <div className="mb-2 text-white/85"><b className="text-white">b.</b> Deploy it in your AWS account:</div>
                   <Copyable text={setup.cli_command} />
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                    <div><Label>Bob's account id</Label><Copyable text={setup.bob_account_id} /></div>
+                    <div>
+                      <Label>Bob's account id</Label>
+                      {setup.bob_account_id ? <Copyable text={setup.bob_account_id} /> : <p className="rounded-lg bg-void px-3 py-2 text-[12.5px] text-bob-yellow">Not set on the server (BOB_ACCOUNT_ID). Ask the team for it.</p>}
+                    </div>
                     <div><Label>Your external id</Label><Copyable text={setup.external_id} /></div>
                   </div>
                 </li>
@@ -162,11 +197,21 @@ export default function AccountScreen() {
                   )}
                 </li>
               </ol>
+              )}
             </StepCard>
 
             <StepCard id="models" n={2} title="Choose models" done={modelsOk}>
-              <p className="mb-3 text-[13px] text-dim">Any Bedrock model id or inference profile works. The defaults are filled in.</p>
-              {models && <ModelsEditor value={models} onChange={setModels} keys={keys} onKeys={setKeys} results={modelResults} />}
+              <p className="mb-3 text-[13px] text-dim">
+                Any Bedrock model id or inference profile works. The defaults are filled in.
+                {awsOk && !available && (
+                  <button onClick={() => void loadAvailable()} disabled={availBusy} className="ml-1 text-bob-sky hover:underline disabled:opacity-50">
+                    {availBusy ? "Loading your models…" : "Show the models in your account"}
+                  </button>
+                )}
+                {available && <span className="ml-1 text-bob-mint">{available.length} models available as suggestions.</span>}
+              </p>
+              <ErrorBanner error={availErr} title="Couldn't list your Bedrock models" />
+              {models && <ModelsEditor value={models} onChange={setModels} keys={keys} onKeys={setKeys} results={modelResults} options={available} />}
               <ErrorBanner error={modelErr} title="Couldn't save the models" />
               <Button className="mt-3" busy={modelBusy} disabled={!models?.writer.model_id || !models?.planner.model_id || !models?.judge.model_id} onClick={saveModels}>
                 Save and check

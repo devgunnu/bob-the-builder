@@ -1,38 +1,55 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { ArrowLeft, CheckCircle2, ExternalLink, Gavel, Loader2, ScanEye, XCircle } from "lucide-react";
 import { api, ApiError } from "../api/client";
-import type { CheckResult, Row, SpanRef } from "../api/types";
+import type { CheckResult, Job, Row, SpanRef } from "../api/types";
 import { AppShell } from "../components/AppShell";
-import { ErrorBanner, Panel, caseLabel, usd, useTitle } from "../components/ui";
+import { ErrorBanner, Panel, caseLabel, checkLabel, usd, useTitle } from "../components/ui";
 
-// Human labels for CONTRACTS section 4 check names.
-const CHECK_LABEL: Record<string, string> = {
-  format: "Format",
-  banned_phrases: "No banned phrases",
-  dedup: "Not a duplicate",
-  numbers: "Numbers appear in the source",
-  "extract.names": "No invented features (ScaleDown Extract)",
-  "jev.cell": "About the right topic",
-  "jev.quality": "Answer quality",
-  "jev.realistic": "Sounds like a real user",
-  "jev.supported": "Every claim is in the passages",
-  "jev.answers": "Resolves the question",
-  "jev.flags_gap": "Flags what the docs don't cover",
-  "jev.not_in_docs": "Docs really don't answer it",
-  "jev.abstains": "Says so and hands off, invents nothing",
-  "jev.contradicted": "Source contradicts the user's assumption",
-  "jev.corrects": "Politely corrects the assumption",
-};
+
 
 const TIER_LABEL = { 1: "code", 2: "Jev + ScaleDown", 3: "judge" } as const;
 
-function Span({ s }: { s: SpanRef }) {
-  // CONTRACTS: start/end are offsets in the document; when they fall inside
-  // the span text, highlight that slice, otherwise the whole span is the citation.
-  const inside = s.start >= 0 && s.end > s.start && s.end <= s.text.length;
-  const [a, b] = inside ? [s.start, s.end] : [0, s.text.length];
+interface Passage {
+  span: SpanRef;
+  marks: [number, number][]; // highlighted slices of span.text
+}
+
+/**
+ * Row.spans holds the cited passages (chunks) and the extracted facts (evidence spans),
+ * both with offsets into the source document. Show each passage once and highlight the
+ * facts inside it. A fact outside every passage shows on its own.
+ */
+export function groupSpans(spans: SpanRef[]): Passage[] {
+  const sorted = [...spans].sort((a, b) => b.end - b.start - (a.end - a.start));
+  const out: Passage[] = [];
+  for (const s of sorted) {
+    const host = out.find((p) => p.span.doc_id === s.doc_id && s.start >= p.span.start && s.end <= p.span.end);
+    if (!host) {
+      out.push({ span: s, marks: [] });
+      continue;
+    }
+    // Offsets first; fall back to a text search when the passage text was normalized.
+    let a = s.start - host.span.start;
+    if (host.span.text.slice(a, a + s.text.length) !== s.text) a = host.span.text.indexOf(s.text);
+    if (a >= 0) host.marks.push([a, a + s.text.length]);
+  }
+  for (const p of out) p.marks.sort((x, y) => x[0] - y[0]);
+  return out.sort((x, y) => x.span.doc_id.localeCompare(y.span.doc_id) || x.span.start - y.span.start);
+}
+
+function Span({ p }: { p: Passage }) {
+  const s = p.span;
   const external = /^https?:\/\//.test(s.uri);
+  const parts: { text: string; mark: boolean }[] = [];
+  let at = 0;
+  for (const [a, b] of p.marks) {
+    if (a < at) continue; // overlapping facts: keep the first
+    if (a > at) parts.push({ text: s.text.slice(at, a), mark: false });
+    parts.push({ text: s.text.slice(a, b), mark: true });
+    at = b;
+  }
+  if (at < s.text.length) parts.push({ text: s.text.slice(at), mark: false });
   return (
     <div className="rounded-xl border border-line bg-void p-3">
       <div className="mb-1.5 flex items-center gap-2 text-[12px]">
@@ -45,10 +62,8 @@ function Span({ s }: { s: SpanRef }) {
           <span className="ml-auto shrink-0 font-mono text-[10.5px] text-dim">{s.uri}</span>
         )}
       </div>
-      <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-white/50">
-        {s.text.slice(0, a)}
-        <mark className="rounded bg-bob-yellow/20 px-0.5 text-bob-yellow">{s.text.slice(a, b)}</mark>
-        {s.text.slice(b)}
+      <p className={`scroll-thin max-h-64 overflow-y-auto whitespace-pre-wrap text-[12.5px] leading-relaxed ${p.marks.length ? "text-white/50" : "text-white/75"}`}>
+        {parts.map((x, i) => (x.mark ? <mark key={i} className="rounded bg-bob-yellow/20 px-0.5 text-bob-yellow">{x.text}</mark> : <span key={i}>{x.text}</span>))}
       </p>
     </div>
   );
@@ -59,7 +74,7 @@ function CheckItem({ c }: { c: CheckResult }) {
     <li className="py-1.5">
       <div className="flex items-center gap-2 text-[13px]">
         {c.passed ? <CheckCircle2 className="size-4 shrink-0 text-bob-mint" /> : <XCircle className="size-4 shrink-0 text-rose-400" />}
-        <span className="text-white/90">{CHECK_LABEL[c.name] ?? c.name}</span>
+        <span className="text-white/90">{checkLabel(c.name)}</span>
         <span className="ml-auto text-[10.5px] text-dim">{TIER_LABEL[c.tier]}</span>
         {c.score !== null && <span className="font-mono text-[11px] text-dim">{c.score.toFixed(2)}</span>}
       </div>
@@ -91,6 +106,7 @@ export default function RowInspector() {
   const { id, rowId } = useParams();
   const [row, setRow] = useState<Row | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
+  const [job, setJob] = useState<Job | null>(null);
   const nav = useNavigate();
   useTitle("Row");
   useEffect(() => {
@@ -102,12 +118,17 @@ export default function RowInspector() {
     setRow(null);
     api.row(id!, rowId!).then(setRow).catch(setError);
   }, [id, rowId]);
+  // The tracker shows where the job really is (a done job keeps Report open).
+  useEffect(() => {
+    api.getJob(id!).then(setJob).catch(() => undefined);
+  }, [id]);
 
   const kept = row?.verdict === "kept";
   const notInDocs = row?.checks.find((c) => c.name === "jev.not_in_docs");
+  const passages = useMemo(() => groupSpans(row?.spans ?? []), [row]);
 
   return (
-    <AppShell pose={row ? (kept ? "idea" : "think") : "think"} title="Row" step="build" status="building">
+    <AppShell pose={row ? (kept ? "idea" : "think") : "think"} title={job?.spec.goal ?? "Row"} step="build" status={job?.status ?? null} hasReport={!!job?.report}>
       <div className="mx-auto max-w-6xl px-4 py-5">
         <Link to={`/jobs/${id}/build`} className="mb-3 inline-flex items-center gap-1 text-[12.5px] text-dim hover:text-white">
           <ArrowLeft className="size-4" /> Back to the build <kbd className="ml-1 rounded border border-line px-1 font-mono text-[10px]">Esc</kbd>
@@ -141,14 +162,14 @@ export default function RowInspector() {
                     ))}
                   </div>
                 </Panel>
-                <Panel title={`Source${row.spans.length === 1 ? "" : "s"}`} action={<span className="text-[11px] text-dim">{row.spans.length} cited</span>}>
+                <Panel title={`Source${passages.length === 1 ? "" : "s"}`} action={<span className="text-[11px] text-dim">{passages.length} cited</span>}>
                   {notInDocs && (
                     <div className="mb-3 rounded-lg bg-bob-yellow/10 px-3 py-2 text-[12.5px] text-bob-yellow">
                       Not in the docs: {notInDocs.detail}
                     </div>
                   )}
                   <div className="space-y-2">
-                    {row.spans.length === 0 ? <div className="text-[12.5px] text-dim">No supporting spans recorded for this row.</div> : row.spans.map((s, i) => <Span key={i} s={s} />)}
+                    {passages.length === 0 ? <div className="text-[12.5px] text-dim">No supporting passages recorded for this row.</div> : passages.map((p, i) => <Span key={i} p={p} />)}
                   </div>
                 </Panel>
               </div>

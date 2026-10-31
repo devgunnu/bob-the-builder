@@ -28,12 +28,13 @@ function useEta(kept: number, target: number, finished: boolean): string | null 
 
 const LLM_ROLES = new Set(["writer", "planner", "judge", "fallback"]);
 
-function buildPose(stage: string | null, done: boolean, stopped: boolean): BobPose {
+// Still pose from the job's status (the worker reports build progress per cell, not per stage).
+function buildPose(status: Job["status"] | null, stage: string | null, done: boolean, stopped: boolean): BobPose {
   if (done) return "hero";
   if (stopped) return "idle";
-  if (stage === "generate") return "type";
-  if (stage === "verify") return "stamp";
-  if (stage === "export") return "carry";
+  if (status === "reporting" || stage === "export") return "carry";
+  if (status === "filling_gaps") return "stamp";
+  if (status === "building") return "type";
   return "think";
 }
 
@@ -114,11 +115,11 @@ function RowFeed({ rows, jobId, kept, rejected }: { rows: RowEvent[]; jobId: str
     setLoadingOlder(true);
     setOlderError(null);
     try {
-      const page = await api.rows(jobId, { verdict: filter, offset: recent.length + older.length, limit: 100 });
+      const page = await api.newestRows(jobId, { verdict: filter }, 100, recent.length + older.length);
       const known = new Set([...rows, ...older].map((row) => row.id));
       const additions = page.rows.map(rowEvent).filter((row) => !known.has(row.id));
       setOlder((current) => [...current, ...additions]);
-      setHasOlder(recent.length + older.length + page.rows.length < page.total);
+      setHasOlder(page.more);
     } catch (error) {
       setOlderError(error as ApiError);
     } finally {
@@ -183,7 +184,7 @@ function RowFeed({ rows, jobId, kept, rejected }: { rows: RowEvent[]; jobId: str
               ))}
             </AnimatePresence>
           </ul>
-          {hasOlder && (
+          {hasOlder && shown.length < (filter === "kept" ? kept : rejected) && (
             <button onClick={() => void loadOlder()} disabled={loadingOlder} className="mx-auto my-2 block rounded-lg px-3 py-1.5 text-[12px] text-dim hover:bg-white/[0.05] hover:text-white disabled:opacity-50">
               {loadingOlder ? "Loading older rows…" : "Load older rows"}
             </button>
@@ -205,7 +206,7 @@ function CellDrawer({ jobId, cellId, label, onClose }: { jobId: string; cellId: 
     setRows(null);
     setError(null);
     api
-      .rows(jobId, { cell_id: cellId, limit: 100 })
+      .newestRows(jobId, { cell_id: cellId }, 100)
       .then((page) => {
         if (!controller.signal.aborted) {
           setRows(page.rows);
@@ -239,7 +240,7 @@ function CellDrawer({ jobId, cellId, label, onClose }: { jobId: string; cellId: 
           {rows?.length === 0 && <Empty>No rows in this cell yet.</Empty>}
           {rows && rows.length > 0 && (
             <>
-              <p className="mb-2 px-2 text-[11px] text-dim">{total.toLocaleString()} rows</p>
+              <p className="mb-2 px-2 text-[11px] text-dim">{total.toLocaleString()} {total === 1 ? "row" : "rows"}</p>
               <ul className="space-y-1">
                 {rows.map((row) => {
                   const preview = row.messages.find((message) => message.role === "user")?.content ?? "";
@@ -278,7 +279,7 @@ export default function BuildScreen() {
     return () => window.clearTimeout(t);
   }, [done]);
 
-  const pose: BobPose = cheer ? "cheer" : buildPose(s.lastStage, done, stopped);
+  const pose: BobPose = cheer ? "cheer" : buildPose(s.status, s.lastStage, done, stopped);
   const plan = s.plan;
   const highlight = useMemo(() => new Set(s.round?.cells ?? []), [s.round]);
   const kept = s.counts.kept ?? 0;

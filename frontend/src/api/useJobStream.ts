@@ -114,6 +114,7 @@ export function useJobStream(jobId: string | undefined): JobStream & { setReport
           case "report.ready":
             return { ...p, report: e.data };
           case "files.ready":
+          case "done":
             return { ...p, files: e.data.files };
           case "log":
             return { ...p, logs: [...p.logs.slice(-49), e.data] };

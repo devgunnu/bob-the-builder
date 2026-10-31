@@ -68,6 +68,7 @@ async def config_public() -> dict[str, Any]:
         return {"auth": "none"}
     return {
         "auth": "cognito",
+        "signup": settings.signup,  # P1: "open" shows the sign-up tab (BOB_SIGNUP)
         "cognito": {
             "region": settings.cognito_region,
             "user_pool_id": settings.cognito_user_pool_id,

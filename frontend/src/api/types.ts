@@ -91,6 +91,8 @@ export interface Cell {
   kept: number;
   rejected: number;
   judged: number;
+  mix_weights?: Record<string, Record<string, number>>; // gap rounds: boosted shares per mix axis
+  mix_kept?: Record<string, Record<string, number>>; // kept rows per mix axis value
 }
 
 export interface Plan {
@@ -200,6 +202,7 @@ export interface ModelCost {
 
 export interface CostSummary {
   by_model: Record<string, ModelCost>;
+  by_purpose?: Record<string, ModelCost>; // triage, verify, evidence, topics, ...
   model_ids: Record<string, string>; // role -> model id
   price_unknown: string[]; // roles whose model has no known price
   total_usd: number;
@@ -284,6 +287,9 @@ export interface Row {
   spot_check: boolean | null;
   cost_usd: number;
   created_at: string;
+  chunk_ids?: string[];
+  absent_topic?: string | null;
+  premise_evidence_id?: string | null;
 }
 
 export interface DPOPair {
@@ -332,13 +338,25 @@ export interface PreviewResult {
 }
 export interface PublicConfig {
   auth: "none" | "cognito";
+  signup?: "open" | "invite"; // P1 self sign-up (BOB_SIGNUP); default invite only
   cognito?: { region: string; user_pool_id: string; client_id: string; domain: string };
 }
 export interface AwsSetup {
-  bob_account_id: string;
+  bob_account_id: string | null; // null when the server can't tell (no BOB_ACCOUNT_ID, no STS)
   external_id: string;
   template_url: string;
   cli_command: string;
+}
+export interface AvailableModel {
+  id: string;
+  name: string;
+  provider: string | null;
+  kind: "inference_profile" | "foundation_model";
+  on_demand: boolean;
+}
+export interface AvailableModels {
+  region: string;
+  models: AvailableModel[];
 }
 export interface PresetInfo {
   name: string;
@@ -385,7 +403,8 @@ export type BobEvent =
   | { type: "report.ready"; data: Report }
   | { type: "files.ready"; data: { files: Record<string, string> } }
   | { type: "log"; data: { level: string; message: string } }
-  | { type: "error"; data: { message: string } };
+  | { type: "error"; data: { message: string } }
+  | { type: "done"; data: { files: Record<string, string> } };
 
 export const EVENT_TYPES: BobEvent["type"][] = [
   "job.status",
@@ -400,4 +419,5 @@ export const EVENT_TYPES: BobEvent["type"][] = [
   "files.ready",
   "log",
   "error",
+  "done",
 ];

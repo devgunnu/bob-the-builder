@@ -214,6 +214,7 @@ export function Composer({
           </kbd>
         )}
 
+        {variant === "landing" && (
         <button
           type="button"
           onClick={submit}
@@ -223,6 +224,7 @@ export function Composer({
         >
           <ArrowUp className="size-5" />
         </button>
+        )}
       </div>
 
       {files.length > 0 && !locked && (

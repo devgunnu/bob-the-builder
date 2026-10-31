@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AlertTriangle, ChevronDown } from "lucide-react";
-import { MODEL_ROLES, type ModelConfig, type ModelRole, type ModelRoles } from "../api/types";
+import { MODEL_ROLES, type AvailableModel, type ModelConfig, type ModelRole, type ModelRoles } from "../api/types";
 import { Label } from "./ui";
 
 const ROLE_INFO: Record<ModelRole, { title: string; hint: string }> = {
@@ -19,12 +19,15 @@ export function ModelsEditor({
   keys,
   onKeys,
   results,
+  options,
 }: {
   value: ModelRoles;
   onChange: (v: ModelRoles) => void;
   keys?: Record<string, string>;
   onKeys?: (k: Record<string, string>) => void;
   results?: Record<string, string> | null;
+  /** P1 model picker: ids from GET /me/models/available, offered as suggestions (free text still works). */
+  options?: AvailableModel[] | null;
 }) {
   const [open, setOpen] = useState<ModelRole | null>(null);
   const set = (role: ModelRole, patch: Partial<ModelConfig> | null) => {
@@ -36,6 +39,11 @@ export function ModelsEditor({
 
   return (
     <div className="space-y-2">
+      {options && options.length > 0 && (
+        <datalist id="bob-models">
+          {options.map((o) => <option key={o.id} value={o.id}>{o.name}{o.kind === "inference_profile" ? " (inference profile)" : ""}</option>)}
+        </datalist>
+      )}
       {MODEL_ROLES.map((role) => {
         const m = value[role] ?? null;
         const r = results?.[role];
@@ -51,6 +59,7 @@ export function ModelsEditor({
                 onChange={(e) => (role === "fallback" && !e.target.value ? set(role, null) : set(role, { model_id: e.target.value }))}
                 placeholder={role === "fallback" ? "Same as writer" : "Model id or inference profile"}
                 aria-label={`${ROLE_INFO[role].title} model id`}
+                list={options?.length ? "bob-models" : undefined}
                 className="min-w-[200px] flex-1 rounded-lg border border-line bg-transparent px-3 py-2 font-mono text-[12.5px] outline-none placeholder:font-sans placeholder:text-dim"
               />
               {r && <span className={`text-[12px] ${r === "ok" ? "text-bob-mint" : "text-rose-300"}`}>{r === "ok" ? "✓ works" : "✕ failed"}</span>}
