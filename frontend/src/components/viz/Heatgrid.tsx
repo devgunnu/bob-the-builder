@@ -3,6 +3,8 @@ import { motion } from "motion/react";
 import type { Axis, Cell } from "../../api/types";
 import { CaseHeader, caseLabel } from "../ui";
 
+// Persona and difficulty are mix axes inside each cell (D29); this grid never facets by them.
+
 export interface GridCell {
   coords: Record<string, string>;
   enabled: boolean;
@@ -33,47 +35,22 @@ function fill(r: number): string {
   return `rgb(${c[0]} ${c[1]} ${c[2]})`;
 }
 
-function Facet({ axis, value, onChange }: { axis?: Axis; value: string; onChange: (v: string) => void }) {
-  if (!axis || axis.values.length < 2) return null;
-  return (
-    <label className="flex items-center gap-1.5 text-[12px] text-dim">
-      {axis.name}
-      <select value={value} onChange={(e) => onChange(e.target.value)} className="rounded-lg border border-line bg-panel-2 px-2 py-1 text-white outline-none">
-        <option value="">all</option>
-        {axis.values.map((v) => (
-          <option key={v} value={v}>
-            {caseLabel(v)}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
 interface HeatgridProps {
   axes: Axis[];
   cells: GridCell[];
   highlight?: Set<string>;
   onCellClick?: (topic: string, caseType: string, matches: GridCell[]) => void;
   compact?: boolean;
-  /** Persona / difficulty filters stay hidden until asked for (progressive disclosure). */
-  filters?: boolean;
 }
 
-export function Heatgrid({ axes, cells, highlight, onCellClick, compact, filters = false }: HeatgridProps) {
+export function Heatgrid({ axes, cells, highlight, onCellClick, compact }: HeatgridProps) {
   const topics = axes.find((a) => a.name === "topic")?.values ?? [];
   const cases = axes.find((a) => a.name === "case_type")?.values ?? [];
-  const personaAxis = axes.find((a) => a.name === "persona");
-  const diffAxis = axes.find((a) => a.name === "difficulty");
-  const [persona, setPersona] = useState("");
-  const [diff, setDiff] = useState("");
   const [hover, setHover] = useState<{ t: string; c: string } | null>(null);
 
   const agg = useMemo(() => {
     const m = new Map<string, { cells: GridCell[]; target: number; kept: number; generated: number; rejected: number; judged: number; enabled: number; hot: boolean }>();
     for (const c of cells) {
-      if (persona && c.coords.persona !== persona) continue;
-      if (diff && c.coords.difficulty !== diff) continue;
       const k = `${c.coords.topic}|${c.coords.case_type}`;
       const a = m.get(k) ?? { cells: [], target: 0, kept: 0, generated: 0, rejected: 0, judged: 0, enabled: 0, hot: false };
       a.cells.push(c);
@@ -89,7 +66,7 @@ export function Heatgrid({ axes, cells, highlight, onCellClick, compact, filters
       m.set(k, a);
     }
     return m;
-  }, [cells, persona, diff, highlight]);
+  }, [cells, highlight]);
 
   if (!topics.length || !cases.length) return null;
   const h = hover ? agg.get(`${hover.t}|${hover.c}`) : undefined;
@@ -97,8 +74,6 @@ export function Heatgrid({ axes, cells, highlight, onCellClick, compact, filters
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-center gap-3">
-        {filters && <Facet axis={personaAxis} value={persona} onChange={setPersona} />}
-        {filters && <Facet axis={diffAxis} value={diff} onChange={setDiff} />}
         <div className="ml-auto flex items-center gap-1.5 text-[10.5px] text-dim">
           0%
           <span className="h-2 w-20 rounded-full" style={{ background: `linear-gradient(90deg, ${fill(0)}, ${fill(0.5)}, ${fill(1)})` }} />

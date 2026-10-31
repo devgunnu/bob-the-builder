@@ -1,5 +1,6 @@
 import { useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { AlertTriangle, BookCheck, BookOpen, Loader2, SearchX, ShieldQuestion, type LucideIcon } from "lucide-react";
+import { Link } from "react-router";
 import type { ApiError } from "../api/client";
 
 export function Panel({ title, action, children, className = "" }: { title?: ReactNode; action?: ReactNode; children: ReactNode; className?: string }) {
@@ -49,6 +50,9 @@ export function ErrorBanner({ error, title = "Something went wrong" }: { error: 
         </div>
         <div className="break-words text-rose-200/90">{e.message}</div>
         {"detail" in e && e.detail && <div className="mt-0.5 break-words font-mono text-[11px] text-rose-200/60">{e.detail}</div>}
+        {"fix" in e && e.fix && (
+          <Link to={e.fix.to} className="mt-1.5 inline-block rounded-lg bg-white/10 px-2.5 py-1 text-[12.5px] text-white hover:bg-white/15">{e.fix.label} →</Link>
+        )}
       </div>
     </div>
   );

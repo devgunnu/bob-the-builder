@@ -64,46 +64,22 @@ function ReadingView({ s, onCancel }: { s: JobStream; onCancel: () => void }) {
 }
 
 
-function PlanGrid({ plan, setCells, showFilters }: { plan: Plan; setCells: (fn: (c: Cell[]) => Cell[]) => void; showFilters: boolean }) {
+function PlanGrid({ plan, setCells }: { plan: Plan; setCells: (fn: (c: Cell[]) => Cell[]) => void }) {
   const topics = plan.axes.find((a) => a.name === "topic")?.values ?? [];
   const cases = plan.axes.find((a) => a.name === "case_type")?.values ?? [];
-  const personas = plan.axes.find((a) => a.name === "persona")?.values ?? [];
-  const diffs = plan.axes.find((a) => a.name === "difficulty")?.values ?? [];
-  const [persona, setPersona] = useState("");
-  const [diff, setDiff] = useState("");
   const [open, setOpen] = useState<string | null>(null);
 
-  const match = (c: Cell, t?: string, cs?: string) =>
-    (!t || c.coords.topic === t) && (!cs || c.coords.case_type === cs) && (!persona || c.coords.persona === persona) && (!diff || c.coords.difficulty === diff);
-
+  const match = (c: Cell, t?: string, cs?: string) => (!t || c.coords.topic === t) && (!cs || c.coords.case_type === cs);
   const setOn = (on: boolean, t?: string, cs?: string) => setCells((cells) => cells.map((c) => (match(c, t, cs) ? { ...c, enabled: on } : c)));
   const toggle = (t?: string, cs?: string) =>
     setCells((cells) => {
       const turnOn = cells.filter((c) => match(c, t, cs)).some((c) => !c.enabled);
       return cells.map((c) => (match(c, t, cs) ? { ...c, enabled: turnOn } : c));
     });
-  // Rows per matching cell; the popover shows and edits that number.
   const setPer = (t: string, cs: string, v: number) => setCells((cells) => cells.map((c) => (match(c, t, cs) ? { ...c, target: Math.max(1, v) } : c)));
-
-  const sel = (label: string, value: string, set: (v: string) => void, values: string[]) =>
-    values.length > 1 && (
-      <label className="flex items-center gap-1.5 text-[12px] text-dim">
-        {label}
-        <select value={value} onChange={(e) => set(e.target.value)} className="rounded-lg border border-line bg-panel-2 px-2 py-1 text-white outline-none">
-          <option value="">all</option>
-          {values.map((v) => <option key={v} value={v}>{caseLabel(v)}</option>)}
-        </select>
-      </label>
-    );
 
   return (
     <div onKeyDown={(e) => e.key === "Escape" && setOpen(null)}>
-      {showFilters && (
-        <div className="mb-3 flex flex-wrap items-center gap-3">
-          {sel("persona", persona, setPersona, personas)}
-          {sel("difficulty", diff, setDiff, diffs)}
-        </div>
-      )}
       <div className="scroll-thin overflow-x-auto pb-1 md:overflow-visible">
         <table className="w-full min-w-[520px] table-fixed border-separate" style={{ borderSpacing: 6 }}>
           <colgroup>
@@ -161,7 +137,7 @@ function PlanGrid({ plan, setCells, showFilters }: { plan: Plan; setCells: (fn: 
                             </button>
                           </label>
                           <div className={`mt-3 flex items-center justify-between text-[13px] ${on.length ? "" : "pointer-events-none opacity-40"}`}>
-                            <span>Rows{m.length > 1 && <span className="ml-1 text-[11px] text-dim">×{m.length}</span>}</span>
+                            <span>Rows</span>
                             <span className="flex items-center gap-1">
                               <button aria-label="Fewer rows" onClick={() => setPer(t, cs, per - 5)} className="grid size-7 place-items-center rounded-lg bg-white/5 hover:bg-white/10"><Minus className="size-3.5" /></button>
                               <span className="w-8 text-center tabular-nums">{per}</span>
@@ -183,70 +159,88 @@ function PlanGrid({ plan, setCells, showFilters }: { plan: Plan; setCells: (fn: 
   );
 }
 
-function AxisEditor({ axis, plan, update }: { axis: Axis; plan: Plan; update: (p: Plan) => void }) {
+function MixEditor({ axis, plan, update, locked }: { axis: Axis; plan: Plan; update: (p: Plan) => void; locked: boolean }) {
   const [edit, setEdit] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
-  const editable = axis.name === "persona";
-  const activeValues = new Set(plan.cells.filter((c) => c.enabled).map((c) => c.coords[axis.name]));
+  const editable = axis.name === "persona" && !locked;
+  const w = (v: string) => axis.weights[v] ?? 1;
+  const total = axis.values.reduce((a, v) => a + w(v), 0) || 1;
 
-  const toggleValue = (v: string) => {
-    const on = activeValues.has(v);
-    update({ ...plan, cells: plan.cells.map((c) => (c.coords[axis.name] === v ? { ...c, enabled: !on } : c)) });
+  const patch = (fn: (a: Axis) => Axis) => update({ ...plan, axes: plan.axes.map((a) => (a.name === axis.name ? fn(a) : a)) });
+  const setShare = (v: string, pctVal: number) => {
+    // Set this value's share, scale the others to fill the rest.
+    const others = axis.values.filter((x) => x !== v);
+    const otherSum = others.reduce((a, x) => a + w(x), 0) || 1;
+    const p = Math.min(100, Math.max(0, pctVal)) / 100;
+    const weights: Record<string, number> = { [v]: p };
+    others.forEach((x) => (weights[x] = others.length ? ((1 - p) * w(x)) / otherSum : 0));
+    patch((a) => ({ ...a, weights }));
   };
-
   const save = (old: string) => {
     const nv = name.trim() || old;
-    const axes = plan.axes.map((a) => {
-      if (a.name !== axis.name) return a;
+    patch((a) => {
       const descriptions = { ...a.descriptions };
+      const weights = { ...a.weights };
       delete descriptions[old];
       descriptions[nv] = desc;
-      return { ...a, values: a.values.map((x) => (x === old ? nv : x)), descriptions };
+      if (old in weights) {
+        weights[nv] = weights[old];
+        if (nv !== old) delete weights[old];
+      }
+      return { ...a, values: a.values.map((x) => (x === old ? nv : x)), descriptions, weights };
     });
-    // Rename in place: cell ids stay stable (CONTRACTS / G3 pitfall).
-    const cells = plan.cells.map((c) => (c.coords[axis.name] === old ? { ...c, coords: { ...c.coords, [axis.name]: nv } } : c));
-    update({ ...plan, axes, cells });
     setEdit(null);
   };
-
-  const remove = (v: string) => {
-    const axes = plan.axes.map((a) => (a.name === axis.name ? { ...a, values: a.values.filter((x) => x !== v) } : a));
-    const cells = plan.cells.map((c) => (c.coords[axis.name] === v ? { ...c, enabled: false } : c));
-    update({ ...plan, axes, cells });
-  };
+  const remove = (v: string) =>
+    patch((a) => {
+      const weights = { ...a.weights };
+      delete weights[v];
+      return { ...a, values: a.values.filter((x) => x !== v), weights };
+    });
 
   return (
     <div>
-      <Label>{{ topic: "Topics", persona: "Personas", case_type: "Case types", difficulty: "Difficulty" }[axis.name]}</Label>
-      <div className="flex flex-wrap gap-1.5">
-        {axis.values.map((v) =>
-          edit === v ? (
-            <div key={v} className="w-full space-y-1.5 rounded-xl border border-bob-yellow/40 p-2">
-              <input value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-lg border border-line bg-panel-2 px-2 py-1 text-[12.5px] outline-none" />
-              <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="One line about who this is" className="w-full rounded-lg border border-line bg-panel-2 px-2 py-1 text-[12px] outline-none placeholder:text-dim" />
+      <Label>{axis.name === "persona" ? "Who asks" : "How hard"}</Label>
+      <ul className="space-y-1.5">
+        {axis.values.map((v) => {
+          const share = Math.round((w(v) / total) * 100);
+          return edit === v ? (
+            <li key={v} className="space-y-1.5 rounded-xl border border-bob-yellow/40 p-2">
+              <input value={name} onChange={(e) => setName(e.target.value)} aria-label="Name" className="w-full rounded-lg border border-line bg-panel-2 px-2 py-1 text-[12.5px] outline-none" />
+              <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="One line about who this is" aria-label="Description" className="w-full rounded-lg border border-line bg-panel-2 px-2 py-1 text-[12px] outline-none placeholder:text-dim" />
               <div className="flex gap-1.5">
                 <Button className="!px-2.5 !py-1 text-[12px]" onClick={() => save(v)}>Save</Button>
                 <Button tone="ghost" className="!px-2.5 !py-1 text-[12px]" onClick={() => setEdit(null)}>Cancel</Button>
               </div>
-            </div>
+            </li>
           ) : (
-            <span
-              key={v}
-              title={axis.descriptions[v]}
-              className={`group flex items-center gap-1 rounded-full border px-2.5 py-1 text-[12px] transition ${activeValues.has(v) ? "border-bob-sky/40 bg-bob-blue/10 text-white" : "border-line text-dim line-through"}`}
-            >
-              <button onClick={() => toggleValue(v)}>{caseLabel(v)}</button>
+            <li key={v} className="group flex items-center gap-2 rounded-xl bg-white/[0.03] px-2.5 py-1.5">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] text-white/90">{caseLabel(v)}</span>
+                {axis.descriptions[v] && <span className="block truncate text-[11px] text-dim">{axis.descriptions[v]}</span>}
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={share}
+                disabled={locked}
+                onChange={(e) => setShare(v, Number(e.target.value))}
+                aria-label={`${v} share`}
+                className="w-20 accent-[var(--color-bob-blue)]"
+              />
+              <span className="w-9 text-right font-mono text-[12px] tabular-nums text-white/80">{share}%</span>
               {editable && (
                 <>
-                  <button aria-label={`Edit ${v}`} onClick={() => (setEdit(v), setName(v), setDesc(axis.descriptions[v] ?? ""))} className="text-dim opacity-60 hover:text-white group-hover:opacity-100"><Pencil className="size-3" /></button>
-                  <button aria-label={`Remove ${v}`} onClick={() => remove(v)} className="text-dim opacity-60 hover:text-rose-300 group-hover:opacity-100"><X className="size-3" /></button>
+                  <button aria-label={`Edit ${v}`} onClick={() => (setEdit(v), setName(v), setDesc(axis.descriptions[v] ?? ""))} className="text-dim opacity-60 hover:text-white group-hover:opacity-100"><Pencil className="size-3.5" /></button>
+                  {axis.values.length > 1 && <button aria-label={`Remove ${v}`} onClick={() => remove(v)} className="text-dim opacity-60 hover:text-rose-300 group-hover:opacity-100"><X className="size-3.5" /></button>}
                 </>
               )}
-            </span>
-          ),
-        )}
-      </div>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -263,7 +257,10 @@ function PlanEditor({ s, jobId }: { s: JobStream; jobId: string }) {
   const est = (draft.est_cost_usd * enabledTarget) / original;
   const budget = s.job?.spec.budget_usd ?? 10;
   const locked = s.status !== "awaiting_approval";
-  const count = (axis: string) => new Set(on.map((c) => c.coords[axis])).size;
+  const count = (axis: string) =>
+    draft.axes.find((a) => a.name === axis)?.role === "mix"
+      ? draft.axes.find((a) => a.name === axis)?.values.length ?? 0
+      : new Set(on.map((c) => c.coords[axis])).size;
   const edited = useMemo(() => JSON.stringify(draft) !== JSON.stringify(s.plan), [draft, s.plan]);
   useTitle("Plan");
 
@@ -313,7 +310,7 @@ function PlanEditor({ s, jobId }: { s: JobStream; jobId: string }) {
           <h2 className="font-display text-[16px] font-bold">What Bob will write</h2>
           <span className="ml-auto text-[11.5px] text-dim">Click a cell to change it · click a row or column name to switch it all</span>
         </div>
-        <PlanGrid plan={draft} showFilters={advanced} setCells={(fn) => setDraft((d) => ({ ...d, cells: fn(d.cells) }))} />
+        <PlanGrid plan={draft} setCells={(fn) => setDraft((d) => ({ ...d, cells: fn(d.cells) }))} />
         <div className="mt-3 flex items-center gap-3 text-[12px] text-dim">
           <span className="flex items-center gap-1.5"><span className="size-3 rounded bg-bob-blue/40" /> included</span>
           <span className="flex items-center gap-1.5"><span className="size-3 rounded border border-dashed border-white/25" /> off</span>
@@ -325,14 +322,15 @@ function PlanEditor({ s, jobId }: { s: JobStream; jobId: string }) {
       </section>
 
       <button onClick={() => setAdvanced((v) => !v)} className="mt-5 flex items-center gap-2 text-[13px] text-dim hover:text-white">
-        <SlidersHorizontal className="size-4" /> {advanced ? "Hide" : "Fine-tune"} personas, difficulty and the system prompt
+        <SlidersHorizontal className="size-4" /> {advanced ? "Hide" : "Fine-tune"} who asks, how hard, and the system prompt
       </button>
       {advanced && (
         <div className="mt-3 grid gap-4 md:grid-cols-2">
           <section className="space-y-4 rounded-2xl bg-panel p-4">
-            {draft.axes.filter((a) => a.name === "persona" || a.name === "difficulty").map((a) => (
-              <AxisEditor key={a.name} axis={a} plan={draft} update={setDraft} />
+            {draft.axes.filter((a) => a.role === "mix").map((a) => (
+              <MixEditor key={a.name} axis={a} plan={draft} update={setDraft} locked={locked} />
             ))}
+            <p className="text-[11.5px] text-dim">These mix inside every cell of the grid.</p>
           </section>
           <section className="rounded-2xl bg-panel p-4">
             <Label>System prompt (ships in every row)</Label>
