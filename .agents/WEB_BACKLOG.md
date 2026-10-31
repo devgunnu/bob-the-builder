@@ -23,18 +23,18 @@
 ### Poses needed (priority order)
 | # | Pose name | Frames | Where it's used |
 |---|---|---|---|
-| 1 | `dive` | 3 | Blackout transition: Bob jumps into the glowing bar before it morphs |
-| 2 | `read` | 3 | Plan screen while reading (fetch, triage, evidence): Bob with a document and magnifying glass |
-| 3 | `type` | 3 | Build screen during `generate`: Bob typing on a tiny laptop |
-| 4 | `stamp` | 3 | Build screen during `verify`: Bob stamping a cube "VERIFIED" |
-| 5 | `nope` | 3 | Rejected rows: Bob shaking head, tossing a cracked cube in a bin |
-| 6 | `point` | 2 | Plan screen: Bob pointing at the Start button |
-| 7 | `carry` | 3 | Export: Bob carrying a stack of cubes |
-| 8 | `blink` | 3 | Idle loop: subtle blink / breathing |
-| 9 | `sweat` | 2 | Error state: confused, sweat drop |
-| 10 | `sleep` | 2 | Long idle on the landing page: zzz |
+| 1 | `dive` | 3 | Blackout transition: Bob jumps into the glowing bar before it morphs | Done |
+| 2 | `read` | 3 | Plan screen while reading (fetch, triage, evidence): Bob with a document and magnifying glass | Done |
+| 3 | `type` | 3 | Build screen during `generate`: Bob typing on a tiny laptop | Done |
+| 4 | `stamp` | 3 | Build screen during `verify`: Bob stamping a cube "VERIFIED" | Done |
+| 5 | `nope` | 3 | Rejected rows: Bob shaking head, tossing a cracked cube in a bin | Done |
+| 6 | `point` | 2 | Plan screen: Bob pointing at the Start button | Done |
+| 7 | `carry` | 3 | Export: Bob carrying a stack of cubes | Done |
+| 8 | `blink` | 3 | Idle loop: subtle blink / breathing | Done |
+| 9 | `sweat` | 2 | Error state: confused, sweat drop | Done |
+| 10 | `sleep` | 2 | Long idle on the landing page: zzz | Done |
 
-## B. Art: Bob memes for the carousel
+## B. Art: Bob memes for the carousel (Done)
 
 - Drop images in `frontend/src/assets/memes/` (`.webp` preferred, under 150 KB each, about 600x600).
 - Caption = filename (`bob-reads-the-terms-of-service.webp` -> "Bob reads the terms of service"), or override in `frontend/src/assets/memes/captions.json`: `{ "file.webp": "Caption" }`.
@@ -58,18 +58,19 @@ Ideas (data jokes, keep them kind):
 
 Each has an acceptance check.
 
-1. **Bob dives into the bar** (needs `dive` pose). During `blackout`, Bob jumps from the landing header into the bar before the morph. *Done when:* visible in the 2.1 s blackout, no layout jump.
-2. **Stage-aware Bob (still frames only).** Swap the still AppShell / reading-screen pose by `lastStage` (`read` for fetch/triage/evidence, `type` for generate, `stamp` for verify, `carry` for export). No loops inside the app (UX_NOTES rule 7). *Done when:* Plan and Build pass the pose from the stream.
+1. **Bob dives into the bar** (needs `dive` pose). During `blackout`, Bob jumps from the landing header into the bar before the morph. *Done when:* visible in the 2.1 s blackout, no layout jump. **Done.**
+2. **Stage-aware Bob (still frames only).** Swap the still AppShell / reading-screen pose by `lastStage` (`read` for fetch/triage/evidence, `type` for generate, `stamp` for verify, `carry` for export). No loops inside the app (UX_NOTES rule 7). *Done when:* Plan and Build pass the pose from the stream. **Done.**
 3. **Whole-page drag and drop** on the landing page: dropping files shows a glowing drop zone and attaches them to the composer. *Done when:* files appear as chips in the composer.
 4. **Cubes assemble on verify.** A small cube pile next to the Kept counter grows as kept rows arrive; rejected rows show a cracked cube falling away. *Done when:* smooth at 30 rows/s.
 5. **Completion moment (subtle).** On `done`, a single soft fade-in of the report headline; no confetti inside the app (UX_NOTES rule 7).
 6. **Source scan line.** When a row is selected, a scan line sweeps the source block before the highlight appears.
 7. **Done:** real API client, SSE helper with replay de-duplication, all v4 screens.
-8. **Row history.** Build feed keeps the last 200 events; add a "load more" that pages `GET /jobs/{id}/rows`.
-9. **Heatgrid cell click** on Build: open a drawer listing that cell's rows (`GET /rows?cell_id=`).
+8. **Row history.** Build feed keeps the last 200 events; add a "load more" that pages `GET /jobs/{id}/rows`. **Done.**
+9. **Heatgrid cell click** on Build: open a drawer listing that cell's rows (`GET /rows?cell_id=`). **Done.**
 10. **Keyboard.** `j/k` moves through rows, `e` opens Export, `Esc` clears the selection.
-11. **Accessibility pass.** Focus rings on all controls, `aria-live` for Bob's chat messages, colour-contrast check on dim text.
-12. **Landing polish.** Idle `sleep` pose after 60 s without input; new poses and memes go here, where the personality lives.
+11. **Accessibility pass.** Focus rings on all controls, `aria-live` for Bob's chat messages, colour-contrast check on dim text. **Done.**
+12. **Landing polish.** Idle `sleep` pose after 60 s without input; new poses and memes go here, where the personality lives. **Done.**
+13. **Performance.** Lazy-load sign-in and screens; keep Build row rendering smooth for large event streams. **Done.**
 
 ## D. Known gaps
 - Fonts load from Google Fonts; add local fallbacks if the venue wifi is bad.

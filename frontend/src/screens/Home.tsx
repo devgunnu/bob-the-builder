@@ -1,6 +1,7 @@
-import { useCallback, useState } from "react";
-import { AnimatePresence, LayoutGroup, motion } from "motion/react";
+import { useCallback, useEffect, useState } from "react";
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
 import { AppShell } from "../components/AppShell";
+import { Bob } from "../components/Bob";
 import { Composer } from "../components/Composer";
 import { LandingBackdrop, LandingField, LandingHeader } from "../components/Landing";
 import { SetupScreen } from "./Setup";
@@ -15,6 +16,27 @@ export default function Home() {
   const [phase, setPhase] = useState<Phase>("landing");
   const [goal, setGoal] = useState("");
   const [files, setFiles] = useState<File[]>([]);
+  const [sleeping, setSleeping] = useState(false);
+  const reduceMotion = useReducedMotion() ?? false;
+
+  useEffect(() => {
+    if (phase !== "landing") {
+      setSleeping(false);
+      return;
+    }
+    let timeout = window.setTimeout(() => setSleeping(true), 60_000);
+    const wake = () => {
+      setSleeping(false);
+      window.clearTimeout(timeout);
+      timeout = window.setTimeout(() => setSleeping(true), 60_000);
+    };
+    const events: (keyof WindowEventMap)[] = ["keydown", "pointerdown", "pointermove", "touchstart"];
+    events.forEach((event) => window.addEventListener(event, wake));
+    return () => {
+      window.clearTimeout(timeout);
+      events.forEach((event) => window.removeEventListener(event, wake));
+    };
+  }, [phase]);
 
   const enter = useCallback((text: string, picked: File[]) => {
     setGoal(text);
@@ -45,7 +67,7 @@ export default function Home() {
 
         {phase !== "setup" && (
           <div className="absolute inset-0 flex flex-col items-center justify-center px-4">
-            <AnimatePresence>{phase === "landing" && <LandingHeader key="header" />}</AnimatePresence>
+            <AnimatePresence>{phase === "landing" && <LandingHeader key="header" sleeping={sleeping} />}</AnimatePresence>
             <Composer variant="landing" intensity={phase === "blackout" ? "bright" : "calm"} locked={phase === "blackout" ? goal : undefined} onSubmit={enter} />
             <AnimatePresence>
               {phase === "landing" && (
@@ -62,6 +84,20 @@ export default function Home() {
             </AnimatePresence>
           </div>
         )}
+
+        <AnimatePresence>
+          {phase === "blackout" && (
+            <motion.div
+              key="dive"
+              className="pointer-events-none absolute left-1/2 top-1/2 z-10 -ml-16 -mt-40"
+              initial={reduceMotion ? false : { opacity: 0, x: -28, y: -180, rotate: -20, scale: 0.8 }}
+              animate={reduceMotion ? { opacity: 1, y: 80 } : { opacity: [0, 1, 1, 0], x: [-28, -8, 0, 8], y: [-180, -100, 42, 92], rotate: [-20, -12, 8, 18], scale: [0.8, 1, 1, 0.7] }}
+              transition={reduceMotion ? { duration: 0 } : { duration: 1.15, ease: "easeInOut" }}
+            >
+              <Bob pose="dive" size={128} float={false} still={reduceMotion} />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {phase === "setup" && (
           <motion.div className="absolute inset-0" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}>
