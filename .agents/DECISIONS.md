@@ -124,6 +124,13 @@ Each entry: decision, why, what would change it.
 - **Build window:** 4 hours. Checkpoints at T+1:30 and T+2:50. Feature freeze at T+3:30.
 - **Would change if:** Composio OAuth fails for the demo account. Then the demo uploads the same real Notion pages, exported as markdown.
 
+## D25. Deploy to AWS serverless: Lambda API + Fargate job workers (team decision, 2026-10-30)
+- **Decision:** CloudFront serves the React build from S3 and sends `/api/*` to a Lambda Function URL with response streaming. The API Lambda runs FastAPI through the AWS Lambda Web Adapter. It runs only short routes and SSE. Each job runs in one Fargate task (same image, `python -m bob.worker`). The task lives from ingest through plan approval to `done`. State is in DynamoDB (job summary, control flags, events, rows) and S3 (job document, docs, chunks, exports, uploads, cache). API keys are in Secrets Manager. Bedrock uses the IAM role. AWS CDK (Python) in `infra/` deploys two stacks: `BobData` and `BobApp`. Aaditya owns the deploy through a new agent, A5 Deploy (CONTRACTS section 13).
+- **Local mode stays:** `BOB_ENV=local` keeps the in-memory store, the `runs/` folder and the in-process runner. A1 writes the store, events, blobs and runner behind protocols. A5 writes the aws versions. The orchestrator code is the same in both modes.
+- **Why:** an API Lambda cannot keep a 10-minute job alive after it sends the response, but a Fargate task can. One task for each job keeps the read state (chunks, embeddings, evidence index) in memory across plan approval, and it has only one cold start. Idle cost is about zero (no NAT, no always-on task). An API on Fargate behind an ALB has less work, but the team chose Lambda for the API.
+- **Costs:** Fargate cold start (30 to 60 s) before the plan shows. Uploads are limited to 6 MB. Routes must return in less than 25 s. SSE needs a heartbeat and reconnects every 14 minutes. The orchestrator getters become async.
+- **Would change if:** the cloud job path fails at T+3:30. Then the demo runs on localhost and shows the deployed UI and `/api/health`.
+
 ## Open questions
 Still open:
 1. Exact Bedrock model IDs or inference profiles for Haiku 5.5 and Sonnet 5.5, and the region. Check at T+0:00 (CONTRACTS section 9).
@@ -133,6 +140,9 @@ Still open:
 5. Demo Notion content: who writes the 5 to 10 internal-style pages, and do they match the product in the Firecrawl docs?
 6. Current prices for Haiku 5.5, Sonnet 5.5, Jev and ScaleDown, for the cost meter and the frontier-only estimate.
 7. Do we need non-English corpora (switch to potion-multilingual-128M)?
+8. AWS account and region. The region must have Haiku 5.5 and Sonnet 5.5 on Bedrock. Decide before T+0:00 (D25).
+9. Do we need a login on the public URL? Default: no login. The per-job budget, `BOB_MAX_WORKERS=2` and the origin-secret header (P1) protect the account.
+10. Custom domain? Default: no. Use the CloudFront domain.
 
 Answered:
 - ~~Demo product: ModelForge or another real product?~~ Firecrawl docs plus Notion pages (D24).

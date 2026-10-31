@@ -4,8 +4,8 @@ Everything a human or an AI agent needs to build Bob at Night Hack (2026-10-30).
 
 1. **[PLAN.md](PLAN.md)**: pitch, user flow, architecture, Jev and CDM roles, team and agents, 4-hour timeline, definition of done, cut lines, demo, cost, risks.
 2. **[CONTRACTS.md](CONTRACTS.md)**: source of truth for code. File ownership, core models, stage signatures, verification cascade, Jev and ScaleDown clients, HTTP API, orchestrator, SSE events, config, re-sync, export, real-only rules. Lock before coding.
-3. **[AGENT_BRIEFS.md](AGENT_BRIEFS.md)**: the prompt for each coding agent (A1 to A4, G1 to G4).
-4. **[DECISIONS.md](DECISIONS.md)**: why each choice was made. v4 decisions are D18 to D24. Open questions are at the end.
+3. **[AGENT_BRIEFS.md](AGENT_BRIEFS.md)**: the prompt for each coding agent (A1 to A5, G1 to G4).
+4. **[DECISIONS.md](DECISIONS.md)**: why each choice was made. v4 decisions are D18 to D25. Open questions are at the end.
 5. **[research/11-data-factory.md](research/11-data-factory.md)**: the v4 ideation record. Why templates were dropped, the mechanisms we considered, the user flow, the Jev / CDM roles and the cascade.
 
 ## TL;DR (v4)
@@ -20,7 +20,8 @@ Everything a human or an AI agent needs to build Bob at Night Hack (2026-10-30).
 - **Ship:** a data quality report, DPO pairs from rejected vs kept replies, presets (OpenAI chat, ShareGPT, Alpaca, ModelForge, DPO, full) in JSONL / JSON / CSV / Parquet, plus manifest and provenance.
 - **No training:** Bob makes data only (D20). **No mocks:** every call is real; only a cache of real responses (D23).
 - **Stack:** FastAPI + SSE, React + TypeScript; all LLMs are Anthropic on AWS Bedrock. Convex and Photon are dropped (D24).
-- **Team:** Aaditya owns AI and backend logic (A1 to A4); Gunbir owns frontend and integrations (G1 to G4). Estimate: about $1.70 per 1,000 kept rows vs about $20 frontier-only.
+- **Deploy:** AWS serverless (D25, CONTRACTS §13): CloudFront + S3 for the UI, Lambda for the API and SSE, one Fargate worker per job, DynamoDB + S3 for state, CDK in `infra/`. Local mode stays the default for development.
+- **Team:** Aaditya owns AI, backend logic and deployment (A1 to A5); Gunbir owns frontend and integrations (G1 to G4). Estimate: about $1.70 per 1,000 kept rows vs about $20 frontier-only.
 
 ## History (older material, read for context only)
 v4 retires templates, question programs, grammar banks, the generator library and Architect-written generator code (D18). The files below are kept as a record. Where they conflict with PLAN.md or CONTRACTS.md, PLAN.md and CONTRACTS.md win.
