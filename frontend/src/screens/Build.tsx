@@ -239,7 +239,7 @@ function CellDrawer({ jobId, cellId, label, onClose }: { jobId: string; cellId: 
           {rows?.length === 0 && <Empty>No rows in this cell yet.</Empty>}
           {rows && rows.length > 0 && (
             <>
-              <p className="mb-2 px-2 text-[11px] text-dim">{total.toLocaleString()} rows</p>
+              <p className="mb-2 px-2 text-[11px] text-dim">{total.toLocaleString()} {total === 1 ? "row" : "rows"}</p>
               <ul className="space-y-1">
                 {rows.map((row) => {
                   const preview = row.messages.find((message) => message.role === "user")?.content ?? "";

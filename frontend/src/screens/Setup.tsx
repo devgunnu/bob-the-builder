@@ -7,7 +7,7 @@ import type { BrowseItem, ConnectorState, JobOptions, ModelRoles, SourceSpec, To
 import { CASE_TYPES } from "../api/types";
 import { Link } from "react-router";
 import { ModelsEditor } from "../components/ModelsEditor";
-import { Button, ErrorBanner, Label, useTitle } from "../components/ui";
+import { Button, ErrorBanner, Label, caseLabel, useTitle } from "../components/ui";
 
 const TOOLKIT_LABEL: Record<Toolkit, string> = { notion: "Notion", confluence: "Confluence", jira: "Jira", googledrive: "Google Drive" };
 
@@ -605,7 +605,7 @@ function AdvancedOptions({
           {CASE_TYPES.map((c) => (
             <NumField
               key={c}
-              label={c.replace("_", " ")}
+              label={caseLabel(c)}
               value={mix[c]}
               step={0.05}
               max={1}

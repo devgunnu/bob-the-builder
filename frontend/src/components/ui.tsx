@@ -123,3 +123,23 @@ export function useTitle(title: string) {
     document.title = title ? `${title} · Bob` : "Bob the Builder";
   }, [title]);
 }
+
+// Human labels for CONTRACTS section 4 check names.
+export const CHECK_LABEL: Record<string, string> = {
+  format: "Format",
+  banned_phrases: "No banned phrases",
+  dedup: "Not a duplicate",
+  numbers: "Numbers appear in the source",
+  "extract.names": "No invented features (ScaleDown Extract)",
+  "jev.cell": "About the right topic",
+  "jev.quality": "Answer quality",
+  "jev.realistic": "Sounds like a real user",
+  "jev.supported": "Every claim is in the passages",
+  "jev.answers": "Resolves the question",
+  "jev.flags_gap": "Flags what the docs don't cover",
+  "jev.not_in_docs": "Docs really don't answer it",
+  "jev.abstains": "Says so and hands off, invents nothing",
+  "jev.contradicted": "Source contradicts the user's assumption",
+  "jev.corrects": "Politely corrects the assumption",
+};
+export const checkLabel = (name: string) => CHECK_LABEL[name] ?? name;
