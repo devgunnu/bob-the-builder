@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
-import { Check, FileUp, Globe, Link2, Loader2, Plug, Search, Sprout, Trash2, X } from "lucide-react";
+import { Check, FileUp, Globe, Link2, Loader2, Plug, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { BrowseItem, ConnectorState, SourceSpec, Toolkit } from "../api/types";
-import { Bob } from "../components/Bob";
-import { Button, ErrorBanner, Label, Panel } from "../components/ui";
+import { Button, ErrorBanner, Label } from "../components/ui";
 
 const TOOLKIT_LABEL: Record<Toolkit, string> = { notion: "Notion", confluence: "Confluence", jira: "Jira", googledrive: "Google Drive" };
 
@@ -158,7 +157,7 @@ function ConnectorRow({ c, connected, onConnected, onPick }: { c: ConnectorState
   };
 
   return (
-    <div className="rounded-xl border border-line bg-white/[0.02] p-3">
+    <div className="rounded-xl bg-white/[0.03] p-3">
       <div className="flex items-center gap-2">
         <Plug className="size-4 text-bob-sky" />
         <span className="text-[13.5px] font-medium text-white">{TOOLKIT_LABEL[c.toolkit]}</span>
@@ -214,6 +213,8 @@ function ConnectorRow({ c, connected, onConnected, onPick }: { c: ConnectorState
   );
 }
 
+type Tab = "website" | "files" | "apps";
+
 const URL_RE = /(?:https?:\/\/)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s)]*)?/i;
 const withScheme = (u: string) => (/^https?:\/\//i.test(u) ? u : `https://${u}`);
 
@@ -234,6 +235,8 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
   const [budget, setBudget] = useState(10);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
+  const [tab, setTab] = useState<Tab>(() => (goal.match(URL_RE) || !initialFiles.length ? "website" : "files"));
+  const [showOptions, setShowOptions] = useState(false);
   const firstFiles = useRef(initialFiles);
 
   useEffect(() => {
@@ -294,14 +297,28 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
     transition: { duration: 0.55, delay: 0.25 + i * 0.08 },
   });
 
+  const pickedApps = Object.values(connected).filter((c): c is Connected => !!c && c.picked.length > 0);
+  const added: { key: string; label: string; remove: () => void }[] = [
+    ...(url.trim() ? [{ key: "url", label: url.replace(/^https?:\/\//, ""), remove: () => setUrl("") }] : []),
+    ...(uploads.files.length ? [{ key: "files", label: `${uploads.files.length} file${uploads.files.length > 1 ? "s" : ""}`, remove: () => uploads.files.forEach((f) => uploads.remove(f.id)) }] : []),
+    ...pickedApps.map((c) => ({
+      key: c.toolkit,
+      label: `${TOOLKIT_LABEL[c.toolkit]} · ${c.picked.length} item${c.picked.length > 1 ? "s" : ""}`,
+      remove: () => setConnected((x) => ({ ...x, [c.toolkit]: { ...c, picked: [] } })),
+    })),
+  ];
+
+  const TABS: { id: Tab; label: string; icon: ReactNode }[] = [
+    { id: "website", label: "Website", icon: <Globe className="size-4" /> },
+    { id: "files", label: "Files", icon: <FileUp className="size-4" /> },
+    { id: "apps", label: "Apps", icon: <Plug className="size-4" /> },
+  ];
+
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 pb-16 pt-6">
-      <motion.div {...rise(0)} className="mb-4 flex items-center gap-3">
-        <Bob pose="idea" size={64} />
-        <div>
-          <h1 className="font-display text-[26px] font-extrabold leading-tight">Let's set up your dataset</h1>
-          <p className="text-[13.5px] text-dim">Your goal is in the bar. Point Bob at the material it should learn from, then he'll draft a coverage plan.</p>
-        </div>
+    <div className="mx-auto w-full max-w-3xl px-4 pb-16 pt-8">
+      <motion.div {...rise(0)} className="mb-5 text-center">
+        <h1 className="font-display text-[28px] font-extrabold leading-tight">Where should Bob look?</h1>
+        <p className="mt-1 text-[14px] text-dim">Add the material your dataset should come from.</p>
       </motion.div>
 
       <div className="mb-6">{composer(create, uploads.add, creating)}</div>
@@ -312,119 +329,147 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-        <div className="space-y-4">
-          <motion.div {...rise(1)}>
-            <Panel title={<span className="flex items-center gap-2"><Globe className="size-4 text-bob-sky" /> Website</span>}>
-              <div className="flex flex-wrap gap-2">
-                <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-xl border border-line px-3">
-                  <Link2 className="size-4 text-dim" />
-                  <input value={url} onChange={(e) => (setUrl(e.target.value), setPreview(null))} placeholder="https://docs.yourproduct.com" className="w-full bg-transparent py-2 text-[13.5px] outline-none placeholder:text-dim" />
-                </div>
-                <label className="flex items-center gap-1.5 rounded-xl border border-line px-2.5 text-[12px] text-dim">
-                  pages
-                  <input type="number" min={1} max={200} value={crawlLimit} onChange={(e) => setCrawlLimit(Math.max(1, Number(e.target.value) || 1))} className="w-12 bg-transparent text-white outline-none" />
-                </label>
-                <Button tone="ghost" onClick={doPreview} busy={previewing} disabled={!url.trim()}>
-                  Preview
-                </Button>
+      <motion.section {...rise(1)} className="rounded-2xl bg-panel p-1.5">
+        <div className="grid grid-cols-3 gap-1" role="tablist">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={tab === t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex items-center justify-center gap-2 rounded-xl py-2 text-[13.5px] transition ${tab === t.id ? "bg-white/[0.08] text-white" : "text-dim hover:text-white"}`}
+            >
+              {t.icon}
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="p-3">
+          {tab === "website" && (
+            <div>
+              <div className="flex items-center gap-2 rounded-xl border border-line px-3">
+                <Link2 className="size-4 text-dim" />
+                <input
+                  value={url}
+                  onChange={(e) => (setUrl(e.target.value), setPreview(null))}
+                  placeholder="https://docs.yourproduct.com"
+                  className="w-full bg-transparent py-2.5 text-[14px] outline-none placeholder:text-dim"
+                />
+              </div>
+              <div className="mt-2 flex items-center gap-3 text-[12px] text-dim">
+                <span>
+                  Reads up to{" "}
+                  <input type="number" min={1} max={200} value={crawlLimit} onChange={(e) => setCrawlLimit(Math.max(1, Number(e.target.value) || 1))} className="w-10 border-b border-white/20 bg-transparent text-center text-white outline-none" /> pages
+                </span>
+                {url.trim() && (
+                  <button onClick={doPreview} disabled={previewing} className="ml-auto flex items-center gap-1 text-bob-sky hover:underline disabled:opacity-50">
+                    {previewing && <Loader2 className="size-3 animate-spin" />} Preview pages
+                  </button>
+                )}
               </div>
               {preview && (
-                <ul className="scroll-thin mt-3 max-h-48 space-y-1 overflow-y-auto">
+                <ul className="scroll-thin mt-2 max-h-40 space-y-0.5 overflow-y-auto">
                   {preview.map((d) => (
-                    <li key={d.uri} className="flex items-center gap-2 rounded-lg bg-white/[0.03] px-2.5 py-1.5 text-[12.5px]">
-                      <span className="truncate text-white/85">{d.title || d.uri}</span>
+                    <li key={d.uri} className="flex items-center gap-2 px-1 py-1 text-[12.5px]">
+                      <span className="truncate text-white/80">{d.title || d.uri}</span>
                       <span className="ml-auto shrink-0 font-mono text-[11px] text-dim">{d.chars.toLocaleString()} chars</span>
                     </li>
                   ))}
                 </ul>
               )}
-            </Panel>
-          </motion.div>
+            </div>
+          )}
 
-          <motion.div {...rise(2)}>
-            <Panel title={<span className="flex items-center gap-2"><FileUp className="size-4 text-bob-mint" /> Files</span>}>
-              <DropZone onFiles={uploads.add} busy={uploads.busy} label="Drop PDF, DOCX, Markdown, HTML, TXT or CSV, or click to choose" accept=".pdf,.docx,.md,.markdown,.html,.htm,.txt,.csv" />
+          {tab === "files" && (
+            <div>
+              <DropZone onFiles={uploads.add} busy={uploads.busy} label="Drop PDF, DOCX, Markdown, HTML, TXT or CSV" accept=".pdf,.docx,.md,.markdown,.html,.htm,.txt,.csv" />
               <FileList files={uploads.files} onRemove={uploads.remove} />
               {uploads.error && <div className="mt-2"><ErrorBanner error={uploads.error} title="Upload failed" /></div>}
-            </Panel>
-          </motion.div>
+            </div>
+          )}
 
-          <motion.div {...rise(3)}>
-            <Panel title={<span className="flex items-center gap-2"><Plug className="size-4 text-bob-yellow" /> Connected apps</span>}>
-              {connectors === null ? (
-                <div className="flex items-center gap-2 text-[12.5px] text-dim"><Loader2 className="size-4 animate-spin" /> Loading connectors…</div>
-              ) : connectors.length === 0 ? (
-                <div className="text-[12.5px] text-dim">No connectors are configured on the server.</div>
-              ) : (
-                <div className="space-y-2">
-                  {connectors.map((c) => (
-                    <ConnectorRow
-                      key={c.toolkit}
-                      c={c}
-                      connected={connected[c.toolkit] ?? (c.connected && c.account_id ? { toolkit: c.toolkit, account_id: c.account_id, picked: [] } : undefined)}
-                      onConnected={(account) => setConnected((s) => ({ ...s, [c.toolkit]: { toolkit: c.toolkit, account_id: account, picked: [] } }))}
-                      onPick={(items) =>
-                        setConnected((s) => ({ ...s, [c.toolkit]: { toolkit: c.toolkit, account_id: s[c.toolkit]?.account_id ?? c.account_id ?? "", picked: items } }))
-                      }
-                    />
-                  ))}
-                </div>
-              )}
-            </Panel>
-          </motion.div>
+          {tab === "apps" &&
+            (connectors === null ? (
+              <div className="flex items-center gap-2 py-2 text-[12.5px] text-dim"><Loader2 className="size-4 animate-spin" /> Loading connectors…</div>
+            ) : connectors.length === 0 ? (
+              <div className="py-2 text-[12.5px] text-dim">No connectors are configured on the server.</div>
+            ) : (
+              <div className="space-y-2">
+                {connectors.map((c) => (
+                  <ConnectorRow
+                    key={c.toolkit}
+                    c={c}
+                    connected={connected[c.toolkit] ?? (c.connected && c.account_id ? { toolkit: c.toolkit, account_id: c.account_id, picked: [] } : undefined)}
+                    onConnected={(account) => setConnected((x) => ({ ...x, [c.toolkit]: { toolkit: c.toolkit, account_id: account, picked: [] } }))}
+                    onPick={(items) => setConnected((x) => ({ ...x, [c.toolkit]: { toolkit: c.toolkit, account_id: x[c.toolkit]?.account_id ?? c.account_id ?? "", picked: items } }))}
+                  />
+                ))}
+              </div>
+            ))}
         </div>
+      </motion.section>
 
-        <div className="space-y-4">
-          <motion.div {...rise(2)}>
-            <Panel title="Size and budget">
+      {/* what's been added, at a glance */}
+      <motion.div {...rise(2)} className="mt-3 flex min-h-7 flex-wrap items-center gap-1.5">
+        {added.length === 0 ? (
+          <span className="text-[12.5px] text-dim">No sources yet.</span>
+        ) : (
+          added.map((a) => (
+            <span key={a.key} className="flex items-center gap-1.5 rounded-full bg-bob-mint/10 px-2.5 py-1 text-[12px] text-bob-mint">
+              <Check className="size-3" /> {a.label}
+              <button aria-label={`Remove ${a.label}`} onClick={a.remove} className="text-bob-mint/60 hover:text-white"><X className="size-3" /></button>
+            </span>
+          ))
+        )}
+      </motion.div>
+
+      {/* options: one line until opened */}
+      <motion.div {...rise(3)} className="mt-6 border-t border-line pt-4">
+        <button onClick={() => setShowOptions((v) => !v)} className="flex w-full items-center gap-2 text-left text-[13px] text-dim hover:text-white">
+          <SlidersHorizontal className="size-4" />
+          <span>
+            <span className="text-white/85">{targetRows.toLocaleString()} rows</span> · ${budget} budget · {seeds.files.length ? "1 seed file" : "no seed examples"}
+          </span>
+          <span className="ml-auto text-bob-sky">{showOptions ? "Done" : "Change"}</span>
+        </button>
+        {showOptions && (
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div>
               <Label>Rows to keep</Label>
               <div className="flex items-center gap-3">
                 <input type="range" min={100} max={5000} step={100} value={targetRows} onChange={(e) => setTargetRows(Number(e.target.value))} className="flex-1 accent-[var(--color-bob-blue)]" />
                 <input type="number" min={10} value={targetRows} onChange={(e) => setTargetRows(Math.max(10, Number(e.target.value) || 10))} className="w-20 rounded-lg border border-line bg-transparent px-2 py-1 text-right font-mono text-[13px] outline-none" />
               </div>
-              <div className="mt-4">
-                <Label>Budget (stops new writing at 95%)</Label>
-                <div className="flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5">
-                  <span className="text-dim">$</span>
-                  <input type="number" min={1} step={1} value={budget} onChange={(e) => setBudget(Math.max(1, Number(e.target.value) || 1))} className="w-full bg-transparent font-mono text-[13px] outline-none" />
-                </div>
+            </div>
+            <div>
+              <Label>Budget (Bob stops writing at 95%)</Label>
+              <div className="flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5">
+                <span className="text-dim">$</span>
+                <input type="number" min={1} step={1} value={budget} onChange={(e) => setBudget(Math.max(1, Number(e.target.value) || 1))} className="w-full bg-transparent font-mono text-[13px] outline-none" />
               </div>
-            </Panel>
-          </motion.div>
-
-          <motion.div {...rise(3)}>
-            <Panel title={<span className="flex items-center gap-2"><Sprout className="size-4 text-bob-mint" /> Seed examples <span className="text-[11px] font-normal text-dim">optional</span></span>}>
-              <p className="mb-2 text-[12.5px] text-dim">A JSONL or CSV of real examples. Bob uses them for style and tells you which topics they miss.</p>
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Seed examples (optional JSONL or CSV of real examples)</Label>
               {seeds.files.length ? (
                 <FileList files={seeds.files.slice(0, 1)} onRemove={seeds.remove} />
               ) : (
                 <DropZone onFiles={(f) => seeds.add(f.slice(0, 1))} busy={seeds.busy} label="Drop seeds.jsonl or seeds.csv" accept=".jsonl,.csv" />
               )}
               {seeds.error && <div className="mt-2"><ErrorBanner error={seeds.error} title="Seed upload failed" /></div>}
-            </Panel>
-          </motion.div>
-
-          <motion.div {...rise(4)} className="rounded-2xl border border-line bg-panel p-4">
-            <div className="mb-3 space-y-1 text-[12.5px]">
-              {(
-                [
-                  ["Goal", goal.trim().length > 3],
-                  ["At least one source", sources.length > 0],
-                ] as [string, boolean][]
-              ).map(([l, ok]) => (
-                <div key={l} className={`flex items-center gap-2 ${ok ? "text-bob-mint" : "text-dim"}`}>
-                  {ok ? <Check className="size-3.5" /> : <X className="size-3.5" />} {l}
-                </div>
-              ))}
             </div>
-            <Button tone="yellow" className="w-full py-2.5 text-[15px]" busy={creating} disabled={!ready} onClick={create}>
-              Draft the plan
-            </Button>
-            <p className="mt-2 text-center text-[11.5px] text-dim">Bob reads everything first. Nothing is generated until you approve the plan.</p>
-          </motion.div>
-        </div>
-      </div>
+          </div>
+        )}
+      </motion.div>
+
+      <motion.div {...rise(4)} className="mt-6">
+        <Button tone="yellow" className="w-full py-3 text-[16px]" busy={creating} disabled={!ready} onClick={create}>
+          Draft the plan
+        </Button>
+        <p className="mt-2 text-center text-[12px] text-dim">
+          {ready ? "Bob reads everything first. Nothing is written until you approve the plan." : "Add a website, file or app to continue."}
+        </p>
+      </motion.div>
     </div>
   );
 }

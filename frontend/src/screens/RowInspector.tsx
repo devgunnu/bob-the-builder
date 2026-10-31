@@ -25,7 +25,7 @@ const CHECK_LABEL: Record<string, string> = {
   "jev.corrects": "Politely corrects the assumption",
 };
 
-const TIER_LABEL = { 1: "Tier 1 · code", 2: "Tier 2 · Jev + ScaleDown", 3: "Tier 3 · judge" } as const;
+const TIER_LABEL = { 1: "code", 2: "Jev + ScaleDown", 3: "judge" } as const;
 
 function Span({ s }: { s: SpanRef }) {
   // CONTRACTS: start/end are offsets in the document; when they fall inside
@@ -54,31 +54,35 @@ function Span({ s }: { s: SpanRef }) {
   );
 }
 
-function Checks({ checks }: { checks: CheckResult[] }) {
-  const tiers = [1, 2, 3] as const;
+function CheckItem({ c }: { c: CheckResult }) {
   return (
-    <div className="space-y-4">
-      {tiers.map((t) => {
-        const list = checks.filter((c) => c.tier === t);
-        if (!list.length) return null;
-        return (
-          <div key={t}>
-            <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-dim">{TIER_LABEL[t]}</div>
-            <ul className="space-y-1.5">
-              {list.map((c) => (
-                <li key={c.name} className="rounded-lg bg-white/[0.02] px-2.5 py-2">
-                  <div className="flex items-center gap-2 text-[13px]">
-                    {c.passed ? <CheckCircle2 className="size-4 shrink-0 text-bob-mint" /> : <XCircle className="size-4 shrink-0 text-rose-400" />}
-                    <span className="text-white/90">{CHECK_LABEL[c.name] ?? c.name}</span>
-                    {c.score !== null && <span className="ml-auto font-mono text-[11px] text-dim">{c.score.toFixed(2)}</span>}
-                  </div>
-                  {c.detail && <div className={`ml-6 mt-0.5 text-[12px] ${c.passed ? "text-dim" : "text-rose-300/90"}`}>{c.detail}</div>}
-                </li>
-              ))}
-            </ul>
-          </div>
-        );
-      })}
+    <li className="py-1.5">
+      <div className="flex items-center gap-2 text-[13px]">
+        {c.passed ? <CheckCircle2 className="size-4 shrink-0 text-bob-mint" /> : <XCircle className="size-4 shrink-0 text-rose-400" />}
+        <span className="text-white/90">{CHECK_LABEL[c.name] ?? c.name}</span>
+        <span className="ml-auto text-[10.5px] text-dim">{TIER_LABEL[c.tier]}</span>
+        {c.score !== null && <span className="font-mono text-[11px] text-dim">{c.score.toFixed(2)}</span>}
+      </div>
+      {c.detail && !c.passed && <div className="ml-6 mt-0.5 text-[12px] text-rose-300/90">{c.detail}</div>}
+    </li>
+  );
+}
+
+// Failed checks always show; passed checks collapse into one line.
+function Checks({ checks }: { checks: CheckResult[] }) {
+  const [open, setOpen] = useState(false);
+  const sorted = [...checks].sort((a, b) => a.tier - b.tier);
+  const failed = sorted.filter((c) => !c.passed);
+  const passed = sorted.filter((c) => c.passed);
+  return (
+    <div>
+      {failed.length > 0 && <ul className="mb-2">{failed.map((c) => <CheckItem key={c.name} c={c} />)}</ul>}
+      <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-2 rounded-lg bg-bob-mint/[0.07] px-3 py-2 text-left text-[13px] text-bob-mint">
+        <CheckCircle2 className="size-4" />
+        {failed.length ? `${passed.length} other checks passed` : `All ${passed.length} checks passed`}
+        <span className="ml-auto text-[12px] text-dim">{open ? "Hide" : "Show"}</span>
+      </button>
+      {open && <ul className="mt-1 px-1">{passed.map((c) => <CheckItem key={c.name} c={c} />)}</ul>}
     </div>
   );
 }
@@ -110,9 +114,7 @@ export default function RowInspector() {
               <span className="font-display text-[17px] font-bold">{kept ? "Kept" : "Rejected"}</span>
               {!kept && row.reject_reason && <span className="text-[13px] text-rose-200">{row.reject_reason}</span>}
               <div className="ml-auto flex flex-wrap items-center gap-1.5 text-[11.5px]">
-                {Object.entries(row.coords).map(([k, v]) => (
-                  <span key={k} className="rounded-full border border-line px-2 py-0.5 text-dim">{k}: <span className="text-white/85">{caseLabel(v)}</span></span>
-                ))}
+                <span className="text-dim">{Object.values(row.coords).map(caseLabel).join(" · ")}</span>
                 {row.routed_to_judge && <span className="flex items-center gap-1 rounded-full border border-bob-yellow/30 px-2 py-0.5 text-bob-yellow"><Gavel className="size-3" /> judged</span>}
                 {row.audited && <span className="flex items-center gap-1 rounded-full border border-bob-sky/30 px-2 py-0.5 text-bob-sky"><ScanEye className="size-3" /> audited</span>}
                 <span className="rounded-full border border-line px-2 py-0.5 font-mono text-dim">conf {row.confidence.toFixed(2)}</span>
