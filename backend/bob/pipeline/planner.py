@@ -95,6 +95,8 @@ def usage_cost_usd(job: Job, role: Role, usage: Usage) -> float:
 
     Unknown price -> 0.0; the LLM client already put the role in CostSummary.price_unknown.
     """
+    if usage.cached:
+        return 0.0
     caps = caps_for(model_for(job, role))
     usd = caps.usd(usage.in_tokens, usage.out_tokens, usage.cache_read_tokens, usage.cache_write_tokens)
     return usd or 0.0

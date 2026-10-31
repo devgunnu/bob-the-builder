@@ -177,6 +177,8 @@ class Cell(BaseModel):
     kept: int = 0
     rejected: int = 0
     judged: int = 0
+    mix_weights: dict[str, dict[str, float]] = {}  # per-cell overrides; empty uses axis weights
+    mix_kept: dict[str, dict[str, int]] = {}        # kept rows per mix value
 
 class Plan(BaseModel):
     goal: str
@@ -342,6 +344,9 @@ class Row(BaseModel):
     case_type: str
     round: int
     messages: list[Message]
+    chunk_ids: list[str] = []
+    absent_topic: str | None = None
+    premise_evidence_id: str | None = None
     spans: list[SpanRef]                    # supporting source text
     checks: list[CheckResult]
     confidence: float                       # min pass-direction prob of the 2 case-type Noul checks (section 4)
@@ -404,11 +409,12 @@ class Retriever:
 
 # A3: plan + generate + gaps
 async def propose_plan(goal: str, topics: list[Topic], seeds: list[list[Message]],
-                       target_rows: int, budget_usd: float) -> Plan
+                       target_rows: int, budget_usd: float, *, job: Job | None = None,
+                       chunks: dict[str, Chunk] | None = None) -> Plan
                                                                     # cells = CELL_AXES only (default topic x case_type);
                                                                     # other axes get role="mix" + weights; at most MAX_TOPICS topics;
                                                                     # merges the smallest topics until enabled cells <= MAX_CELLS
-def allocate_targets(plan: Plan) -> Plan                            # split target_rows across enabled cells by CASE_MIX;
+def allocate_targets(plan: Plan, *, job: Job | None = None) -> Plan                            # split target_rows across enabled cells by CASE_MIX;
                                                                     # each enabled cell gets at least MIN_CELL_TARGET
 async def generate(cell: Cell, plan: Plan, ctx: "GenContext", n: int) -> list[Candidate]
                                                                     # each batch of WRITER_BATCH rotates mix values by weight;

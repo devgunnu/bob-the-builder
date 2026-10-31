@@ -98,7 +98,18 @@ def _messages(messages: list[Message]) -> tuple[list[dict], list[str]]:
 
 def _strip_schema(schema: dict) -> dict:
     """Schema without JSON Schema keys that Converse json_schema output rejects at the top level."""
-    return {k: v for k, v in schema.items() if k not in ("$schema", "$id")}
+
+    def strict(node):
+        if isinstance(node, list):
+            return [strict(v) for v in node]
+        if not isinstance(node, dict):
+            return node
+        out = {k: strict(v) for k, v in node.items() if k not in ("$schema", "$id")}
+        if out.get("type") == "object" or "properties" in out:
+            out["additionalProperties"] = False
+        return out
+
+    return strict(schema)
 
 
 def parse_json_text(text: str) -> dict:
@@ -320,7 +331,7 @@ class BedrockClient:
             return val, self._usage(resp.get("usage", {}))
         if not cached:
             await self._cache_put(req, resp)
-        return val, self._usage(resp.get("usage", {}))
+        return val, self._usage(resp.get("usage", {})).model_copy(update={"cached": cached})
 
     async def complete_text(
         self,
@@ -333,7 +344,7 @@ class BedrockClient:
         resp, cached = await self._converse(req)
         if not cached:
             await self._cache_put(req, resp)
-        return self._text(resp), self._usage(resp.get("usage", {}))
+        return self._text(resp), self._usage(resp.get("usage", {})).model_copy(update={"cached": cached})
 
 
 def _default_access() -> BedrockAccess:

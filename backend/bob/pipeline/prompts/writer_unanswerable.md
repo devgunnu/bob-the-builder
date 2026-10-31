@@ -7,3 +7,5 @@ The passages do not answer the USER question, but the question is on-topic and p
 - The ASSISTANT reply says that the documentation does not cover this, names what the user asked about, and offers to hand the question to a human on the team. It invents nothing: no steps, no settings, no "you could try", no guess. It can point to a related thing that the passages cover only if that thing is a real fact from the passages.
 - Set `absent_topic` to a short noun phrase for what is missing (2 to 8 words, for example "bulk PDF export"). Never leave it null.
 - Set `premise_evidence_id` to null.
+
+- Set `chunk_ids` to the supplied focus passage IDs you reviewed. These show the context searched, not proof that the answer is absent from the entire corpus.

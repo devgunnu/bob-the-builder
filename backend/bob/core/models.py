@@ -105,6 +105,8 @@ class Cell(BaseModel):
     kept: int = 0
     rejected: int = 0
     judged: int = 0
+    mix_weights: dict[str, dict[str, float]] = {}
+    mix_kept: dict[str, dict[str, int]] = {}
 
 
 class Plan(BaseModel):
@@ -217,6 +219,7 @@ class ModelCost(BaseModel):
 class CostSummary(BaseModel):
     # keys are role names: "writer", "judge", "planner", "fallback", "jev", "scaledown", "firecrawl", "composio"
     by_model: dict[str, ModelCost] = {}
+    by_purpose: dict[str, ModelCost] = {}
     model_ids: dict[str, str] = {}  # role -> model id, e.g. {"writer": "global.anthropic.claude-haiku-5-5"}
     price_unknown: list[str] = []  # roles whose model has no known price (UI badge)
     total_usd: float = 0.0
@@ -295,6 +298,9 @@ class Row(BaseModel):
     case_type: str
     round: int
     messages: list[Message]
+    chunk_ids: list[str] = []
+    absent_topic: str | None = None
+    premise_evidence_id: str | None = None
     spans: list[SpanRef]  # supporting source text
     checks: list[CheckResult]
     confidence: float  # min pass-direction prob of the 2 case-type Jev checks (section 4)

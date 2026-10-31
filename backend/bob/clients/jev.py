@@ -90,10 +90,26 @@ def _client() -> httpx.AsyncClient:
 
 
 def record_cost(
-    job: Job, bucket: str, *, in_tokens: int = 0, out_tokens: int = 0, usd: float | None, model: str
+    job: Job,
+    bucket: str,
+    *,
+    in_tokens: int = 0,
+    out_tokens: int = 0,
+    usd: float | None,
+    model: str,
+    purpose: str | None = None,
 ) -> None:
     """Ledger entry for one real call (A1 `core/ledger.py`, CONTRACTS section 7). Cache hits cost nothing."""
-    ledger.record(job.id, bucket, calls=1, in_tokens=in_tokens, out_tokens=out_tokens, usd=usd, model=model)
+    ledger.record(
+        job.id,
+        bucket,
+        calls=1,
+        in_tokens=in_tokens,
+        out_tokens=out_tokens,
+        usd=usd,
+        model=model,
+        purpose=purpose,
+    )
 
 
 def _retryable(status: int) -> bool:
@@ -232,7 +248,9 @@ def parse_answers(questions: list[Question], data: dict) -> dict[str, Decision]:
     return out
 
 
-async def _jev_call(state: str, questions: list[Question], *, job: Job) -> dict[str, Decision]:
+async def _jev_call(
+    state: str, questions: list[Question], *, job: Job, purpose: str | None = None
+) -> dict[str, Decision]:
     s = settings_for(job)
     if not s.jev_api_key or not s.jev_base_url:
         raise ClientError("jev", None, "JEV_API_KEY or JEV_BASE_URL is not set")
@@ -257,6 +275,7 @@ async def _jev_call(state: str, questions: list[Question], *, job: Job) -> dict[
             out_tokens=int(usage.get("output_tokens", 0)),
             usd=tin * s.jev_price_in_per_m / 1e6,  # output tokens are free (Jev pricing)
             model=str(data.get("model") or s.jev_model),
+            purpose=purpose,
         )
     return parse_answers(questions, data)
 
@@ -383,7 +402,7 @@ async def decide(state: str, questions: list[Question], purpose: str, *, job: Jo
     if not questions:
         return {}
     try:
-        return await _jev_call(state, questions, job=job)
+        return await _jev_call(state, questions, job=job, purpose=purpose)
     except (ClientError, ValueError, KeyError, TypeError) as e:
         if isinstance(e, ValueError) and "needs" in str(e):
             raise  # caller bug (bad question), not a Jev failure
