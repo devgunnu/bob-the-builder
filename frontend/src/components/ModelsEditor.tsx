@@ -73,7 +73,7 @@ export function ModelsEditor({
                 <div>
                   <Label>Provider</Label>
                   <select value={m.provider} onChange={(e) => set(role, { provider: e.target.value as ModelConfig["provider"] })} className="w-full rounded-lg border border-line bg-panel-2 px-2 py-1.5 text-[13px] outline-none">
-                    <option value="bedrock">Amazon Bedrock (your AWS account)</option>
+                    <option value="bedrock">Amazon Bedrock</option>
                     <option value="openai_compatible">OpenAI-compatible endpoint</option>
                   </select>
                 </div>

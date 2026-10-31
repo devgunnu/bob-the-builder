@@ -243,7 +243,7 @@ class Orchestrator:
         """
         s = get_settings()
         if (
-            s.env == "local"
+            s.bedrock_auth == "default"
             and user.bedrock is not None
             and user.bedrock.mode == "default"
             and (user.bedrock_verified_at is None or user.models_verified_at is None)
@@ -254,9 +254,9 @@ class Orchestrator:
                 await self.verify_models(user.id)
             user = await self._user(user.id)
         if user.bedrock is None or user.bedrock_verified_at is None:
-            raise PreconditionFailed("connect AWS first")
+            raise PreconditionFailed("hosting AWS access unavailable" if s.env == "aws" and s.bedrock_auth == "default" else "connect AWS first")
         if user.models_verified_at is None:
-            raise PreconditionFailed("verify models first")
+            raise PreconditionFailed("hosting models unavailable" if s.env == "aws" and s.bedrock_auth == "default" else "verify models first")
 
         now = _now()
         job = Job(
@@ -915,6 +915,12 @@ class Orchestrator:
         """
         u = await self.store.get_user(user_id)
         if u is not None:
+            s = get_settings()
+            if s.bedrock_auth == "default" and u.bedrock != default_bedrock_access(s):
+                u.bedrock = default_bedrock_access(s)
+                u.bedrock_verified_at = None
+                u.models_verified_at = None
+                await self.store.put_user(u)
             if email and u.email != email:
                 u.email = email
                 await self.store.put_user(u)
@@ -936,7 +942,9 @@ class Orchestrator:
         id is always the profile's own external_id."""
         u = await self._user(user_id)
         access = access.model_copy()
-        if get_settings().env == "aws":
+        if get_settings().env == "aws" and get_settings().bedrock_auth == "default":
+            access = default_bedrock_access()
+        elif get_settings().env == "aws":
             access.mode = "assume_role"
         if access.mode == "assume_role":
             access.external_id = u.external_id
@@ -954,8 +962,8 @@ class Orchestrator:
         u = await self._user(user_id)
         if u.bedrock is None:
             return {"ok": False, "error": "no AWS access saved: PUT /me/aws first"}
-        if get_settings().env == "aws" and u.bedrock.mode != "assume_role":
-            return {"ok": False, "error": "aws mode needs mode=assume_role"}
+        if get_settings().env == "aws" and u.bedrock.mode != get_settings().bedrock_auth:
+            return {"ok": False, "error": f"AWS mode needs mode={get_settings().bedrock_auth}"}
         try:
             res = await asyncio.wait_for(asyncio.to_thread(verify_access, u.bedrock, user_id), timeout=20)
         except TimeoutError:

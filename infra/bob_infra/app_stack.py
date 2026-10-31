@@ -24,11 +24,11 @@ class AppStack(Stack):
             data.table.grant_read_write_data(role)
             data.data_bucket.grant_read_write(role)
             data.secret.grant_read(role)
-            role.add_to_policy(iam.PolicyStatement(actions=["sts:AssumeRole"], resources=[f"arn:{self.partition}:iam::*:role/BobBedrockAccess*"]))
+            role.add_to_policy(iam.PolicyStatement(actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream", "bedrock:ListFoundationModels", "bedrock:ListInferenceProfiles", "bedrock:GetInferenceProfile"], resources=["*"]))
         data.key.grant_encrypt_decrypt(api_role)
         data.key.grant_decrypt(task_role)
         task = ecs.FargateTaskDefinition(self, "Task", cpu=2048, memory_limit_mib=4096, task_role=task_role, execution_role=execution_role, runtime_platform=ecs.RuntimePlatform(cpu_architecture=ecs.CpuArchitecture.X86_64, operating_system_family=ecs.OperatingSystemFamily.LINUX))
-        common = {"BOB_ENV": "aws", "BOB_AUTH": "none", "BOB_BEDROCK_AUTH": "assume_role", "BOB_RUNS_DIR": "/tmp/runs", "BOB_TABLE": data.table.table_name, "BOB_BUCKET": data.data_bucket.bucket_name, "BOB_SECRET_ARN": data.secret.secret_arn, "BOB_KMS_KEY_ID": data.key.key_arn, "BOB_ACCOUNT_ID": self.account, "BOB_COGNITO_REGION": self.region, "BOB_COGNITO_USER_POOL_ID": data.pool.user_pool_id, "BOB_COGNITO_CLIENT_ID": data.client.user_pool_client_id, "BOB_COGNITO_DOMAIN": data.domain.domain_name, "BOB_PUBLIC_URL": public_url.value_as_string, "BOB_EMBED_MODEL_PATH": "/opt/models/potion-base-8M"}
+        common = {"BOB_ENV": "aws", "BOB_AUTH": "none", "BOB_BEDROCK_AUTH": "default", "BOB_BEDROCK_DEFAULT_REGION": self.region, "BOB_RUNS_DIR": "/tmp/runs", "BOB_TABLE": data.table.table_name, "BOB_BUCKET": data.data_bucket.bucket_name, "BOB_SECRET_ARN": data.secret.secret_arn, "BOB_KMS_KEY_ID": data.key.key_arn, "BOB_ACCOUNT_ID": self.account, "BOB_COGNITO_REGION": self.region, "BOB_COGNITO_USER_POOL_ID": data.pool.user_pool_id, "BOB_COGNITO_CLIENT_ID": data.client.user_pool_client_id, "BOB_COGNITO_DOMAIN": data.domain.domain_name, "BOB_PUBLIC_URL": public_url.value_as_string, "BOB_EMBED_MODEL_PATH": "/opt/models/potion-base-8M"}
         log_group = logs.LogGroup(self, "WorkerLogs", retention=logs.RetentionDays.ONE_WEEK)
         repository = ecs_repository(self, image.value_as_string)
         task.add_container("worker", image=ecs.ContainerImage.from_ecr_repository(repository, tag=image_tag.value_as_string), environment=common, logging=ecs.LogDrivers.aws_logs(stream_prefix="worker", log_group=log_group))
