@@ -1,0 +1,45 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Role for Bob to invoke Bedrock in the user's account.
+Parameters:
+  BobAccountId:
+    Type: String
+    AllowedPattern: '^[0-9]{12}$'
+  ExternalId:
+    Type: String
+    MinLength: 2
+    MaxLength: 1224
+Resources:
+  BobBedrockAccess:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: BobBedrockAccess
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:${AWS::Partition}:iam::${BobAccountId}:root'
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Ref ExternalId
+              ArnEquals:
+                aws:PrincipalArn:
+                  - !Sub 'arn:${AWS::Partition}:iam::${BobAccountId}:role/BobApiRole'
+                  - !Sub 'arn:${AWS::Partition}:iam::${BobAccountId}:role/BobWorkerTaskRole'
+      Policies:
+        - PolicyName: BedrockAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream]
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:bedrock:*::foundation-model/*'
+                  - !Sub 'arn:${AWS::Partition}:bedrock:*:*:inference-profile/*'
+              - Effect: Allow
+                Action: [bedrock:ListFoundationModels, bedrock:ListInferenceProfiles]
+                Resource: '*'
+Outputs:
+  RoleArn:
+    Value: !GetAtt BobBedrockAccess.Arn
