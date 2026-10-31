@@ -25,6 +25,10 @@ from firecrawl.v2.utils.error_handler import RateLimitError
 REPO_ROOT = Path(__file__).resolve().parent.parent
 OUT_DIR = REPO_ROOT / "demo" / "smoke"
 
+# One copy of the docs-site cleanup: the connector's (backend/bob/connectors/firecrawl.py).
+sys.path.insert(0, str(REPO_ROOT / "backend"))
+from bob.connectors.firecrawl import clean_markdown  # noqa: E402
+
 # Pages a first-reply support bot gets asked about, in priority order.
 # Matched against the path of real URLs returned by `map` (exact match).
 # Chosen because they are short and full of concrete limits, settings and
@@ -45,36 +49,6 @@ MAX_CHARS = (
 )
 RATE_LIMIT_RETRIES = 5
 RATE_LIMIT_WAIT_S = 15  # free plan: 10 requests/min
-
-# Docs-site chrome that survives `only_main_content` (seen on Mintlify sites such as docs.firecrawl.dev).
-HEADING_ANCHOR = re.compile(r"^(#{1,6})\s*\[\u200b?\]\([^)]*\)\s*", re.MULTILINE)
-EDIT_FOOTER = re.compile(r"^\[Suggest edits\]\(.*$", re.MULTILINE)
-LONE_UI_GLYPH = re.compile(r"^\s*[\u2715\u00d7]\s*$", re.MULTILINE)
-SKIP_LINK = re.compile(r"^\[Skip to main content\]\(.*$", re.MULTILINE)
-# Leading "> ## Documentation Index ... llms.txt ..." notice block.
-DOC_INDEX_NOTICE = re.compile(
-    r"\A(?:>.*\n?)*?>\s*#*\s*Documentation Index(?:.*\n?)*?(?=^[^>\n])", re.MULTILINE
-)
-# Chat-widget greeting appended after the content ("- 👋 Hi! ..." bullets to end of page).
-CHAT_WIDGET_TAIL = re.compile(r"^-\s*\U0001F44B.*\Z", re.MULTILINE | re.DOTALL)
-JSON_BLOB_MIN_CHARS = 2_000
-
-
-def clean_markdown(markdown: str) -> str:
-    """Strip docs-site chrome while keeping every line of real page content."""
-    lines = [
-        line
-        for line in markdown.splitlines()
-        if not (line.lstrip().startswith("{") and len(line) >= JSON_BLOB_MIN_CHARS)
-    ]
-    text = "\n".join(lines)
-    text = DOC_INDEX_NOTICE.sub("", text)
-    text = SKIP_LINK.sub("", text)
-    text = HEADING_ANCHOR.sub(r"\1 ", text)
-    text = EDIT_FOOTER.sub("", text)
-    text = LONE_UI_GLYPH.sub("", text)
-    text = CHAT_WIDGET_TAIL.sub("", text)
-    return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
 def with_rate_limit_retry(call, *args, **kwargs):

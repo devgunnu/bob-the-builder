@@ -10,8 +10,9 @@ Source of truth stays `PLAN.md` and `CONTRACTS.md` (v4.1); this file records wha
 |---|---|---|---|
 | 1. Smoke corpus (`demo/smoke/`) | G2 | `gunbir/g2-connectors` | Done, pushed (`28d5d92`), v4.1 merged in (`3fd32bc`) |
 | 2. API slice 1 (parsers, uploads, auth, SSE, thin-path routes) | G1 | `gunbir/g1-api` | Written; parsers + SSE tested; routes wait on A1 core |
-| 3. Firecrawl + Composio (Notion) connectors | G2 | | Next |
+| 3. Firecrawl + Composio (Notion) connectors | G2 | `gunbir/g2-connectors` | Built and tested with real calls; demo Notion pages still to write |
 | 4. API slice 2 (health, `/me/aws*`, `/me/models*`, connectors, preview, spot-check, export, files, presets) | G1 | | After A1 core lands |
+| 3b. Demo Notion pages + full demo crawl to `demo/corpus/` | G2 | | Next |
 | 5. Jira / Confluence, `sync.py` (P1) | G2 | | Later |
 | 6. Integration with the frontend | G1 + G3/G4 | | After 2 to 4 |
 
@@ -44,6 +45,13 @@ Source of truth stays `PLAN.md` and `CONTRACTS.md` (v4.1); this file records wha
 | `POST /jobs` checks `bedrock_verified_at` / `models_verified_at` in the route (412) and maps `RunnerBusy` to 429 | Contract §6 status rules. |
 | Error body everywhere: `{error, provider?, detail?}`; validation errors -> 422 `{error: "invalid request", detail}` | One shape for the frontend to show. |
 | No GZip middleware | It buffers the SSE stream. |
+| Composio Notion auth config `bob-notion-read` (`ac_ELz4KgTaZsVZ`) is Composio-managed OAuth restricted to 5 read-only tools | Bob only reads; a bug cannot edit or delete a user's pages. |
+| Notion fetch uses `NOTION_GET_PAGE_MARKDOWN` (one call per page); browse uses `NOTION_SEARCH_NOTION_PAGE`; both pinned to version `20261018_00` | Markdown in one call, no recursive block walk; a pinned version cannot change shape under us. |
+| Connections are created with `connected_accounts.link` (hosted `connect.composio.dev/link/...` page) | Composio retired `initiate` for managed OAuth (HTTP 400 "no longer supported"). |
+| `notion_to_markdown()` strips Notion-flavored markup (spans, columns, `<unknown/>`, `<empty-block/>`, `{color=...}`, empty to-dos) outside code fences | Found on the first real fetch; the tags would pollute chunks and checks. A real page went from 1,112 to 337 chars with all text kept. |
+| Every Composio call checks that the connection's `user_id` is `bob-<caller id>`; otherwise `ConnectionNotFound` | Per-user privacy (CONTRACTS §14); tested with a real call as another user. |
+| Firecrawl crawl excludes `*.md` paths, skips pages under 200 chars or HTTP >= 400, cancels the crawl on timeout or task cancel | Docs sites publish `.md` duplicates; no paying for pages nobody reads. |
+| Merged `gunbir/g1-api` into `gunbir/g2-connectors` (`c78e652`) | Connectors reuse `parsers.normalize_markdown`; one copy of shared code. |
 | Deployment: S3 + CloudFront for the UI (not Amplify Hosting) | Matches v4.1 (D25). `aws-amplify` is used only as the Cognito sign-in library in the frontend. |
 
 ## How to run
@@ -65,6 +73,13 @@ cd backend && PYTHONPATH=. ../.venv/bin/python -m pytest -q tests/
 API (works once A1 core lands): `backend/run.sh` serves on `:8000`; the Vite dev server proxies `/api`.
 
 ## Log
+
+### 2026-10-31: Part 3, connectors (`gunbir/g2-connectors`)
+- `connectors/firecrawl.py`: `crawl()` (start_crawl, poll every 2 s, progress once per new page, rate-limit retry, cancel on timeout) and `fetch()` -> `Document`s + ledger entry. `clean_markdown()` moved here from the smoke script; the script now imports it.
+- Composio: inspected SDK 0.22.0 by introspection, listed all 60 Notion tools with real calls, created the read-only auth config, linked a Notion connection for `bob-local` (`ca_uKQOf8gvuHHF`, ACTIVE).
+- `connectors/composio.py`: `connect`, `status`, `connections`, `browse`, `fetch`, `auth_config_id` (reuse or create once), `notion_to_markdown`. First real browse + fetch worked.
+- Tests: 38 pass. New: `test_firecrawl.py` (cleanup offline + a real 3-page crawl, ~3 credits), `test_composio.py` (privacy check as another user, auth config reuse + read-only, real browse + fetch, Notion markup cleaner).
+- The connected Notion workspace currently shares one personal page; the demo needs 5 to 10 support-style pages.
 
 ### 2026-10-30: Part 2, API slice 1 (`gunbir/g1-api`)
 - Read the v4.1 G1 brief and CONTRACTS §2, §6, §7, §8, §9, §14. Checked every remote branch: no backend code from A1 yet.
@@ -88,6 +103,6 @@ API (works once A1 core lands): `backend/run.sh` serves on `:8000`; the Vite dev
 - About 20 Firecrawl credits used. `.env` holds `FIRECRAWL_API_KEY`; it is gitignored and never staged.
 
 ## Next
-1. Part 3: `connectors/firecrawl.py` (crawl with per-page progress, cleanup moved from the smoke script, retries, ledger entry) and `connectors/composio.py` (list toolkits and tool slugs at runtime, Notion connect / status / browse / fetch with `user_id = bob-<id>`). Needs `COMPOSIO_API_KEY`.
+1. Demo Notion pages (support FAQ, escalation policy, known issues, ...), shared with the Bob connection; cache them to `demo/corpus/notion/`.
 2. Full demo crawl (cap 25 pages) -> `demo/corpus/` + `index.json`.
-3. When A1 core lands: run the routes, uploads and auth against it, then API slice 2.
+3. When A1 core lands: run the routes, uploads, auth and both connectors' `fetch()` (they import `Document` and `ledger`) against it, then API slice 2 (including `/connectors*` routes on these functions).
