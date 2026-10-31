@@ -247,7 +247,7 @@ class Row(BaseModel):
     messages: list[Message]
     spans: list[SpanRef]                    # supporting source text
     checks: list[CheckResult]
-    confidence: float                       # min pass-direction prob of tier-2 Noul checks (section 4)
+    confidence: float                       # min pass-direction prob of the 2 case-type Noul checks (section 4)
     verdict: Literal["kept", "rejected"]
     reject_reason: str | None = None        # first failing check's detail
     routed_to_judge: bool = False
@@ -359,7 +359,7 @@ Run per candidate. All thresholds come from `config.py`. **Hard checks** (all of
 | false_premise | `jev.contradicted` | Noul | The PASSAGE contradicts the assumption in the USER message | p >= KEEP_P |
 | false_premise | `jev.corrects` | Noul | The ASSISTANT reply politely corrects the wrong assumption using the PASSAGE | p >= KEEP_P |
 
-`confidence` = minimum **pass-direction** probability across tier-2 Noul checks. Pass-direction is `p` for checks that pass on yes, and `1 - p` for checks that pass on no (`jev.not_in_docs`). So a row that passes every check always has `confidence >= KEEP_P`.
+`confidence` = minimum **pass-direction** probability across the **2 case-type Noul checks** only (not `jev.realistic`, `jev.cell` or `jev.quality`). Pass-direction is `p` for checks that pass on yes, and `1 - p` for checks that pass on no (`jev.not_in_docs`). So a row that passes every check always has `confidence >= KEEP_P`.
 
 ### Routing
 1. Any hard fail: **rejected** (`reject_reason` = that check's detail).
