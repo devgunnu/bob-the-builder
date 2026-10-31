@@ -204,3 +204,22 @@ def test_content_failures():
         CheckResult(name="jev.supported", tier=2, passed=True, detail=""),
     ]
     assert content_failures(checks) == ["extract.names"]
+
+
+def test_verbatim_name_match_does_not_depend_on_index():
+    from types import SimpleNamespace
+
+    from bob.core.models import Chunk
+    from bob.pipeline.evidence import EvidenceIndex
+    from bob.pipeline.verify import find_evidence_or_text
+
+    chunk = Chunk(
+        id="c", doc_id="d", uri="upload://d", text="The Role is documented.", start=10, end=33, n_tokens=5
+    )
+    ctx = SimpleNamespace(chunks={"c": chunk}, evidence=EvidenceIndex())
+    hit = find_evidence_or_text("role", ctx)[0]
+    assert hit.span_text == "Role"
+    assert (hit.start, hit.end) == (14, 18)
+    assert find_evidence_or_text("ole", ctx) == []
+    chunk.kept = False
+    assert find_evidence_or_text("Role", ctx) == []

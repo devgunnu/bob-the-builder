@@ -393,7 +393,12 @@ class Orchestrator:
         await run.progress("plan", 0, 1, "planner")
         propose_plan = stage("propose_plan")
         plan = await propose_plan(
-            job.spec.goal, list(topics.values()), seeds, job.spec.target_rows, job.spec.budget_usd
+            job.spec.goal,
+            list(topics.values()),
+            seeds,
+            job.spec.target_rows,
+            job.spec.budget_usd,
+            chunks=chunks,
         )
         job.plan = plan
         await run.progress("plan", 1, 1, "plan ready")
@@ -660,6 +665,14 @@ class Orchestrator:
         cell.generated += n_cands
         kept = sum(1 for r in rows if r.verdict == "kept")
         cell.kept += kept
+        mix_axes = {axis.name for axis in job.plan.axes if axis.role == "mix"}
+        for row in rows:
+            if row.verdict == "kept":
+                for axis in mix_axes:
+                    if axis in row.coords:
+                        counts = cell.mix_kept.setdefault(axis, {})
+                        value = row.coords[axis]
+                        counts[value] = counts.get(value, 0) + 1
         cell.rejected += len(rows) - kept
         cell.judged += sum(1 for r in rows if r.routed_to_judge or r.audited)
         c = job.counts

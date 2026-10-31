@@ -25,6 +25,7 @@ class Usage(BaseModel):
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
     model_id: str
+    cached: bool = False
 
 
 @runtime_checkable

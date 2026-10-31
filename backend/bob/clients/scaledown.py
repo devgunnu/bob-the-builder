@@ -46,7 +46,7 @@ class ExtractField(BaseModel):
 
 
 # ---------------------------------------------------------------- helpers
-async def _post(path: str, body: dict, model: str, *, job: Job) -> dict:
+async def _post(path: str, body: dict, model: str, *, job: Job, purpose: str | None = None) -> dict:
     s = settings_for(job)
     if not s.scaledown_api_key:
         raise ClientError("scaledown", None, "SCALEDOWN_API_KEY is not set")
@@ -62,7 +62,14 @@ async def _post(path: str, body: dict, model: str, *, job: Job) -> dict:
     )
     if not cached:
         tin = _input_tokens(data)
-        record_cost(job, "scaledown", in_tokens=tin, usd=tin * s.scaledown_price_in_per_m / 1e6, model=model)
+        record_cost(
+            job,
+            "scaledown",
+            in_tokens=tin,
+            usd=tin * s.scaledown_price_in_per_m / 1e6,
+            model=model,
+            purpose=purpose,
+        )
     return data
 
 
@@ -222,7 +229,7 @@ async def extract(text: str, schema: dict, purpose: str, *, job: Job) -> list[Ex
             "json_schema": {"name": "extract", "schema": normalize_schema(schema)},
         }
     try:
-        content = _content(await _post("/v1/chat/completions", body, "extract", job=job))
+        content = _content(await _post("/v1/chat/completions", body, "extract", job=job, purpose=purpose))
         return fields_from_result(text, content.get("structured_result"), content.get("entities"))
     except (ClientError, KeyError, IndexError, ValueError, TypeError) as e:
         await note_fallback(job, "scaledown_extract->fallback_model", str(e))
@@ -262,7 +269,7 @@ async def summarize(text: str, purpose: str, instructions: str | None = None, *,
     body: dict[str, Any] = {"model": "summarize", "messages": [{"role": "user", "content": text}]}
     if instructions:
         body["instructions"] = instructions
-    content = _content(await _post("/v1/chat/completions", body, "summarize", job=job))
+    content = _content(await _post("/v1/chat/completions", body, "summarize", job=job, purpose=purpose))
     return str(content.get("summary") or "").strip()
 
 
@@ -277,7 +284,7 @@ async def classify(
         raise ValueError(f"classify needs 1-{MAX_LABELS} labels, got {len(labels)}")
     rubrics = rubrics or {}
     body = {"text": text, "labels": [{"name": n, "rubric": rubrics.get(n, n)} for n in labels]}
-    data = await _post("/classify", body, "classify", job=job)
+    data = await _post("/classify", body, "classify", job=job, purpose=purpose)
     scores = {str(k): float(v) for k, v in (data.get("scores") or {}).items()}
     missing = [n for n in labels if n not in scores]
     if missing:

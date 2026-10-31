@@ -303,6 +303,46 @@ def names_from_fields(fields: list[Any]) -> list[str]:
     return out
 
 
+def find_evidence_or_text(name: str, ctx: GenContext) -> list[Evidence]:
+    """Match indexed evidence or a verbatim occurrence in a kept source chunk.
+
+    Extract is incomplete, so absence from its index alone does not mean a name is absent from the docs.
+    A text match only establishes that the name occurs; the separate support checks assess the answer.
+    """
+    hits = ctx.evidence.find(name)
+    if hits:
+        return hits
+    needle = name.strip()
+    if not needle:
+        return []
+    for chunk in ctx.chunks.values():
+        if not chunk.kept:
+            continue
+        pattern = (
+            (r"(?<!\w)" if needle[0].isalnum() else "")
+            + re.escape(needle)
+            + (r"(?!\w)" if needle[-1].isalnum() else "")
+        )
+        match = re.search(pattern, chunk.text, re.IGNORECASE)
+        if match:
+            offset = match.start()
+            span = match.group()
+            return [
+                Evidence(
+                    id=f"text:{chunk.id}:{offset}",
+                    chunk_id=chunk.id,
+                    doc_id=chunk.doc_id,
+                    kind="entity",
+                    name=span,
+                    span_text=span,
+                    start=chunk.start + offset,
+                    end=chunk.start + offset + len(span),
+                    confidence=1.0,
+                )
+            ]
+    return []
+
+
 def match_names(
     names: list[str],
     find: Any,
@@ -596,7 +636,7 @@ async def _tier2(
             return
         check, matched = match_names(
             names_from_fields(fields),
-            ctx.evidence.find,
+            lambda name: find_evidence_or_text(name, ctx),
             case_type=cand.case_type,
             absent_topic=cand.absent_topic,
             exempt_absent=s.extract_exempt_absent,
@@ -717,6 +757,9 @@ def _row(
         case_type=cand.case_type,
         round=cand.round,
         messages=list(cand.messages),
+        chunk_ids=list(cand.chunk_ids),
+        absent_topic=cand.absent_topic,
+        premise_evidence_id=cand.premise_evidence_id,
         spans=build_spans(chunks, evidence, ctx),
         checks=list(o.checks),
         confidence=confidence_of(o),

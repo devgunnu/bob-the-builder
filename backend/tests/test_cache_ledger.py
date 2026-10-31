@@ -65,3 +65,12 @@ def test_ledger_override_and_unknown_model():
     assert ledger.price_unknown(job.id) == ["planner"]
     ledger.load(job.id, CostSummary())
     assert ledger.total_usd(job.id) == 0.0
+
+
+def test_ledger_purpose_survives_restore():
+    ledger.record("purpose-test", "jev", in_tokens=10, usd=0.01, purpose="triage")
+    saved = ledger.summary("purpose-test")
+    assert saved.by_purpose["triage"].calls == 1
+    ledger.forget("purpose-test")
+    ledger.load("purpose-test", saved)
+    assert ledger.summary("purpose-test").by_purpose["triage"].usd == 0.01
