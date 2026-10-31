@@ -24,4 +24,4 @@ fi
 unset token
 aws cloudformation deploy --stack-name bob-codebuild --template-file "$script_dir/codebuild.yaml" --capabilities CAPABILITY_IAM --parameter-overrides "RepositoryUrl=$repo" "Branch=$branch" --no-fail-on-empty-changeset
 aws codebuild start-build --project-name bob-infrastructure-deploy --source-version "$branch" --query 'build.{id:id,logs:logs.deepLink}' --output json
-echo "Future pushes to $branch trigger the project. The GitHub branch must contain these infra files."
+echo "The project does not use a webhook. Start future builds manually in CodeBuild."
