@@ -256,7 +256,7 @@ export default function ReportScreen() {
                   <Bars data={Object.entries(r.pass_rate_by_check).map(([k, v]) => [checkLabel(k), v] as [string, number]).sort((a, b) => a[1] - b[1])} format={(v) => pct(v)} max={1} />
                 </Panel>
                 <Panel title="Why rows were rejected">
-                  <Bars data={Object.entries(r.reject_reasons).sort((a, b) => b[1] - a[1])} tone="bg-rose-400/70" />
+                  <Bars data={Object.entries(r.reject_reasons).map(([k, v]) => [checkLabel(k), v] as [string, number]).sort((a, b) => b[1] - a[1])} tone="bg-rose-400/70" />
                   <div className="mt-3 text-[12px] text-dim">{r.duplicates_removed.toLocaleString()} duplicates removed</div>
                 </Panel>
                 <Panel title="Judge">
