@@ -79,6 +79,8 @@ Each entry: decision, why, what would change it.
 1. Demo product: ModelForge (default) or another real product?
 2. Is the Photon iMessage prize worth one person's evening, or should D go all in on the web UI?
 3. ~~Strict zero-LLM?~~ Reversed: LLM in controlled roles (D16).
+4. Do we need non-English corpora (switch to potion-multilingual-128M)?
 5. Writer: Claude Haiku 5.5 via API, or a local model on the GPU box?
 6. Architect: Opus 5.5 or Sonnet 5.5?
-4. Do we need non-English corpora (switch to potion-multilingual-128M)?
+7. Re-plan the 5 hours around the live hallucination test working by 8pm?
+8. Who writes the 30 held-out test questions without seeing the generators?
