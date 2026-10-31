@@ -6,6 +6,7 @@ Everything a human or an AI agent needs to build Bob at Night Hack (2026-10-30).
 2. **[CONTRACTS.md](CONTRACTS.md)**: source of truth for code. File ownership, core models, stage signatures, verification cascade, Jev and ScaleDown clients, HTTP API, orchestrator, SSE events, config, re-sync, export, real-only rules, and §14 (v4.1: BYO AWS Bedrock, Cognito auth, users). Lock before coding.
 3. **[AGENT_BRIEFS.md](AGENT_BRIEFS.md)**: the prompt for each coding agent (A1 to A5, G1 to G4).
 4. **[DECISIONS.md](DECISIONS.md)**: why each choice was made. v4 decisions are D18 to D25. v4.1 decisions are D26 to D33 (D26 BYO AWS Bedrock, D27 Cognito + IAM auth, D28 to D31 review fixes, D32 research as we go, D33 model-agnostic LLM layer).
+   - **[WEB_BACKLOG.md](WEB_BACKLOG.md)** and **[UX_NOTES.md](UX_NOTES.md)**: frontend art and animation backlog (for Codex), and the rules that keep the UI calm.
 5. **[research/11-data-factory.md](research/11-data-factory.md)**: the v4 ideation record. Why templates were dropped, the mechanisms we considered, the user flow, the Jev / CDM roles and the cascade.
 
 ## TL;DR (v4.1)

@@ -3,7 +3,10 @@ import { useNavigate } from "react-router";
 import { motion } from "motion/react";
 import { Check, FileUp, Globe, Link2, Loader2, Plug, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { api, ApiError } from "../api/client";
-import type { BrowseItem, ConnectorState, SourceSpec, Toolkit } from "../api/types";
+import type { BrowseItem, ConnectorState, JobOptions, ModelRoles, SourceSpec, Toolkit, UserProfile } from "../api/types";
+import { CASE_TYPES } from "../api/types";
+import { Link } from "react-router";
+import { ModelsEditor } from "../components/ModelsEditor";
 import { Button, ErrorBanner, Label, useTitle } from "../components/ui";
 
 const TOOLKIT_LABEL: Record<Toolkit, string> = { notion: "Notion", confluence: "Confluence", jira: "Jira", googledrive: "Google Drive" };
@@ -226,6 +229,7 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
   });
   const [crawlLimit, setCrawlLimit] = useState(25);
   const [preview, setPreview] = useState<{ uri: string; title: string; chars: number }[] | null>(null);
+  const [capped, setCapped] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const uploads = useUploads();
   const seeds = useUploads();
@@ -237,10 +241,14 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
   const [error, setError] = useState<ApiError | null>(null);
   const [tab, setTab] = useState<Tab>(() => (goal.match(URL_RE) || !initialFiles.length ? "website" : "files"));
   const [showOptions, setShowOptions] = useState(false);
+  const [me, setMe] = useState<UserProfile | null>(null);
+  const [opts, setOpts] = useState<JobOptions>({});
+  const [overrideModels, setOverrideModels] = useState(false);
   useTitle("New dataset");
   const firstFiles = useRef(initialFiles);
 
   useEffect(() => {
+    api.me().then(setMe).catch(() => undefined);
     api
       .connectors()
       .then(setConnectors)
@@ -271,6 +279,7 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
         seed_upload_id: seeds.files[0]?.id ?? null,
         target_rows: targetRows,
         budget_usd: budget,
+        options: cleanOptions(opts, overrideModels),
       });
       nav(`/jobs/${job.id}/plan`);
     } catch (e) {
@@ -284,7 +293,9 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
     setPreviewing(true);
     setError(null);
     try {
-      setPreview((await api.previewSource({ kind: "url", url: url.trim(), crawl_limit: crawlLimit })).documents);
+      const r = await api.previewSource({ kind: "url", url: url.trim(), crawl_limit: crawlLimit });
+      setPreview(r.documents);
+      setCapped(r.capped);
     } catch (e) {
       setError(e as ApiError);
     } finally {
@@ -321,6 +332,17 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
         <h1 className="font-display text-[28px] font-extrabold leading-tight">Where should Bob look?</h1>
         <p className="mt-1 text-[14px] text-dim">Add the material your dataset should come from.</p>
       </motion.div>
+
+      {me && (!me.bedrock_verified_at || !me.models_verified_at) && (
+        <Link
+          to={!me.bedrock_verified_at ? "/account#aws" : "/account#models"}
+          className="mb-4 flex items-center gap-3 rounded-2xl bg-bob-yellow/[0.08] px-4 py-3 text-[13.5px] text-bob-yellow hover:bg-bob-yellow/[0.12]"
+        >
+          <Plug className="size-4 shrink-0" />
+          <span className="flex-1">{!me.bedrock_verified_at ? "Connect your AWS account first. Bob runs the models in your account." : "Verify your models first. It takes a few seconds."}</span>
+          <span className="shrink-0 font-medium">{!me.bedrock_verified_at ? "Connect AWS" : "Verify models"} →</span>
+        </Link>
+      )}
 
       <div className="mb-6">{composer(create, uploads.add, creating)}</div>
 
@@ -375,6 +397,7 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
                   </button>
                 )}
               </div>
+              {preview && capped && <div className="mt-2 text-[12px] text-dim">Showing the first pages only. The job reads up to {crawlLimit}.</div>}
               {preview && (
                 <ul className="scroll-thin mt-2 max-h-40 space-y-0.5 overflow-y-auto">
                   {preview.map((d) => (
@@ -465,6 +488,13 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
               )}
               {seeds.error && <div className="mt-2"><ErrorBanner error={seeds.error} title="Seed upload failed" /></div>}
             </div>
+            <details className="group sm:col-span-2">
+              <summary className="cursor-pointer list-none text-[13px] text-dim hover:text-white">
+                <span className="group-open:hidden">Show advanced options</span><span className="hidden group-open:inline">Hide advanced options</span>
+                <span className="ml-2 text-[11.5px]">Empty fields use the defaults.</span>
+              </summary>
+              <AdvancedOptions opts={opts} setOpts={setOpts} me={me} overrideModels={overrideModels} setOverrideModels={setOverrideModels} />
+            </details>
           </div>
         )}
       </motion.div>
@@ -477,6 +507,125 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
           {ready ? "Bob reads everything first. Nothing is written until you approve the plan." : "Add a website, file or app to continue."}
         </p>
       </motion.div>
+    </div>
+  );
+}
+
+/** Only send the fields the user actually set (CONTRACTS: empty = config or profile default). */
+function cleanOptions(o: JobOptions, withModels: boolean): JobOptions {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(o)) {
+    if (k === "models") continue;
+    if (v === undefined || v === null || v === "" || (typeof v === "object" && !Array.isArray(v) && !Object.keys(v as object).length)) continue;
+    out[k] = v;
+  }
+  if (withModels && o.models) out.models = o.models;
+  return out as JobOptions;
+}
+
+function NumField({ label, value, onChange, step = 1, min = 0, max }: { label: string; value: number | null | undefined; onChange: (v: number | null) => void; step?: number; min?: number; max?: number }) {
+  return (
+    <label className="block">
+      <Label>{label}</Label>
+      <input
+        type="number"
+        step={step}
+        min={min}
+        max={max}
+        value={value ?? ""}
+        placeholder="default"
+        onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
+        className="w-full rounded-lg border border-line bg-transparent px-2 py-1.5 font-mono text-[12.5px] outline-none placeholder:font-sans placeholder:text-dim"
+      />
+    </label>
+  );
+}
+
+function AdvancedOptions({
+  opts,
+  setOpts,
+  me,
+  overrideModels,
+  setOverrideModels,
+}: {
+  opts: JobOptions;
+  setOpts: (o: JobOptions) => void;
+  me: UserProfile | null;
+  overrideModels: boolean;
+  setOverrideModels: (v: boolean) => void;
+}) {
+  const set = <K extends keyof JobOptions>(k: K, v: JobOptions[K]) => setOpts({ ...opts, [k]: v });
+  const mix = opts.case_mix ?? {};
+  const sel = (label: string, k: "dpo_mode" | "numbers_allow_user", values: string[]) => (
+    <label className="block">
+      <Label>{label}</Label>
+      <select value={(opts[k] as string | null | undefined) ?? ""} onChange={(e) => set(k, (e.target.value || null) as never)} className="w-full rounded-lg border border-line bg-panel-2 px-2 py-1.5 text-[13px] outline-none">
+        <option value="">default</option>
+        {values.map((v) => <option key={v}>{v}</option>)}
+      </select>
+    </label>
+  );
+  return (
+    <div className="mt-3 space-y-4 rounded-xl bg-white/[0.02] p-3">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <label className="block sm:col-span-2">
+          <Label>Cell axes</Label>
+          <input
+            value={(opts.cell_axes ?? []).join(", ")}
+            onChange={(e) => set("cell_axes", e.target.value.trim() ? e.target.value.split(",").map((x) => x.trim()).filter(Boolean) : null)}
+            placeholder="default (topic, case_type)"
+            className="w-full rounded-lg border border-line bg-transparent px-2 py-1.5 font-mono text-[12.5px] outline-none placeholder:font-sans placeholder:text-dim"
+          />
+        </label>
+        <NumField label="Max cells" value={opts.max_cells} onChange={(v) => set("max_cells", v)} min={1} />
+        <NumField label="Keep if checks ≥" value={opts.keep_p} onChange={(v) => set("keep_p", v)} step={0.05} max={1} />
+        <NumField label="Reject if checks <" value={opts.reject_p} onChange={(v) => set("reject_p", v)} step={0.05} max={1} />
+        <NumField label="Audit share" value={opts.audit_rate} onChange={(v) => set("audit_rate", v)} step={0.01} max={1} />
+        <NumField label="Max rounds" value={opts.max_rounds} onChange={(v) => set("max_rounds", v)} min={1} />
+        <NumField label="Over-generate ×" value={opts.overgen} onChange={(v) => set("overgen", v)} step={0.1} min={1} />
+        <NumField label="DPO share" value={opts.dpo_rate} onChange={(v) => set("dpo_rate", v)} step={0.05} max={1} />
+        {sel("Preference pairs", "dpo_mode", ["synthesize", "pair", "off"])}
+        {sel("Numbers from the user turn", "numbers_allow_user", ["all", "false_premise", "none"])}
+        <label className="block">
+          <Label>Skip name check for absent topic</Label>
+          <select
+            value={opts.extract_exempt_absent === undefined || opts.extract_exempt_absent === null ? "" : String(opts.extract_exempt_absent)}
+            onChange={(e) => set("extract_exempt_absent", e.target.value === "" ? null : e.target.value === "true")}
+            className="w-full rounded-lg border border-line bg-panel-2 px-2 py-1.5 text-[13px] outline-none"
+          >
+            <option value="">default</option>
+            <option value="true">yes</option>
+            <option value="false">no</option>
+          </select>
+        </label>
+      </div>
+      <div>
+        <Label>Case mix (share of rows per kind of question)</Label>
+        <div className="grid gap-2 sm:grid-cols-4">
+          {CASE_TYPES.map((c) => (
+            <NumField
+              key={c}
+              label={c.replace("_", " ")}
+              value={mix[c]}
+              step={0.05}
+              max={1}
+              onChange={(v) => {
+                const next = { ...mix };
+                if (v === null) delete next[c];
+                else next[c] = v;
+                set("case_mix", Object.keys(next).length ? next : null);
+              }}
+            />
+          ))}
+        </div>
+      </div>
+      <div>
+        <label className="flex items-center gap-2 text-[13px] text-white/85">
+          <input type="checkbox" checked={overrideModels} onChange={(e) => (setOverrideModels(e.target.checked), e.target.checked && !opts.models && me && set("models", structuredClone(me.models) as ModelRoles))} />
+          Use different models for this job only
+        </label>
+        {overrideModels && opts.models && <div className="mt-2"><ModelsEditor value={opts.models} onChange={(m) => set("models", m)} /></div>}
+      </div>
     </div>
   );
 }

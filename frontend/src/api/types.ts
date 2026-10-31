@@ -77,6 +77,8 @@ export interface Axis {
   name: AxisName;
   values: string[];
   descriptions: Record<string, string>;
+  role: "cell" | "mix"; // "cell": forms cells (CELL_AXES); "mix": values rotate inside each cell
+  weights: Record<string, number>; // mix axes only: value -> share of rows
 }
 
 export interface Cell {
@@ -102,7 +104,68 @@ export interface Plan {
   est_cost_usd: number;
 }
 
+export interface Control {
+  state: "approved" | "cancel" | null;
+  plan: Plan | null;
+}
+
+// ---------- models (D33, CONTRACTS section 14) ----------
+export interface ModelConfig {
+  provider: "bedrock" | "openai_compatible";
+  model_id: string;
+  base_url?: string | null;
+  api_key_set?: boolean;
+  json_mode?: "auto" | "tool" | "native" | "prompt";
+  cache?: "auto" | "off";
+  price_in_per_m?: number | null;
+  price_out_per_m?: number | null;
+}
+
+export interface ModelRoles {
+  writer: ModelConfig;
+  planner: ModelConfig;
+  judge: ModelConfig;
+  fallback?: ModelConfig | null;
+}
+export const MODEL_ROLES = ["writer", "planner", "judge", "fallback"] as const;
+export type ModelRole = (typeof MODEL_ROLES)[number];
+
+// ---------- users + Bedrock access ----------
+export interface BedrockAccess {
+  mode: "default" | "assume_role";
+  role_arn?: string | null;
+  external_id?: string | null;
+  region: string;
+}
+
+export interface UserProfile {
+  id: string;
+  email: string | null;
+  external_id: string;
+  bedrock: BedrockAccess | null;
+  bedrock_verified_at: string | null;
+  models: ModelRoles;
+  models_verified_at: string | null;
+  created_at: string;
+}
+
 // ---------- job ----------
+export interface JobOptions {
+  cell_axes?: string[] | null;
+  max_cells?: number | null;
+  case_mix?: Record<string, number> | null;
+  keep_p?: number | null;
+  reject_p?: number | null;
+  audit_rate?: number | null;
+  max_rounds?: number | null;
+  overgen?: number | null;
+  dpo_mode?: "synthesize" | "pair" | "off" | null;
+  dpo_rate?: number | null;
+  numbers_allow_user?: "all" | "false_premise" | "none" | null;
+  extract_exempt_absent?: boolean | null;
+  models?: ModelRoles | null;
+}
+
 export interface JobSpec {
   goal: string;
   sources: SourceSpec[];
@@ -112,6 +175,7 @@ export interface JobSpec {
   preset?: string;
   formats?: string[];
   probe_model?: string | null;
+  options?: JobOptions;
 }
 
 export type JobStatus =
@@ -136,6 +200,8 @@ export interface ModelCost {
 
 export interface CostSummary {
   by_model: Record<string, ModelCost>;
+  model_ids: Record<string, string>; // role -> model id
+  price_unknown: string[]; // roles whose model has no known price
   total_usd: number;
   frontier_only_estimate_usd: number;
   fallbacks_used: string[];
@@ -144,6 +210,9 @@ export interface CostSummary {
 export interface Job {
   id: string;
   spec: JobSpec;
+  owner_id: string;
+  bedrock: BedrockAccess | null;
+  models: ModelRoles;
   status: JobStatus;
   stage_detail: string;
   plan: Plan | null;
@@ -153,6 +222,7 @@ export interface Job {
   files: Record<string, string>;
   report: Report | null;
   error: string | null;
+  heartbeat_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -169,6 +239,7 @@ export interface Candidate {
   cell_id: string;
   round: number;
   case_type: string;
+  coords: Record<string, string>;
   messages: Message[];
   chunk_ids: string[];
   premise_evidence_id: string | null;
@@ -217,14 +288,18 @@ export interface Row {
 
 export interface DPOPair {
   id: string;
+  row_id: string;
+  mode: "synthesized" | "natural";
   prompt: Message[];
   chosen: string;
   rejected: string;
   rejection_reason: string;
+  rejected_checks: string[];
 }
 
 export interface Report {
   coverage: { cell_id: string; coords: Record<string, string>; target: number; kept: number; rejected: number }[];
+  mix_coverage: Record<string, Record<string, number>>; // mix axis -> value -> kept rows
   pass_rate_by_check: Record<string, number>;
   reject_reasons: Record<string, number>;
   duplicates_removed: number;
@@ -250,6 +325,20 @@ export interface BrowseItem {
   id: string;
   title: string;
   kind: string;
+}
+export interface PreviewResult {
+  documents: { uri: string; title: string; chars: number }[];
+  capped: boolean;
+}
+export interface PublicConfig {
+  auth: "none" | "cognito";
+  cognito?: { region: string; user_pool_id: string; client_id: string; domain: string };
+}
+export interface AwsSetup {
+  bob_account_id: string;
+  external_id: string;
+  template_url: string;
+  cli_command: string;
 }
 export interface PresetInfo {
   name: string;

@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router";
-import { Check, FileCheck2, Hammer, History, Link2, Map, X } from "lucide-react";
+import { Check, FileCheck2, Hammer, History, Link2, LogOut, Map, UserRound, X } from "lucide-react";
+import { authMode, signOut } from "../auth/session";
 import { api } from "../api/client";
 import type { Health, JobStatus } from "../api/types";
 import { Bob, type BobPose } from "./Bob";
@@ -27,6 +28,12 @@ function HealthChips() {
   if (!h) return null;
   const bad = Object.entries(h.keys).filter(([, v]) => v !== "ok");
   if (!bad.length) return <span title="All services are reachable" className="size-2 rounded-full bg-bob-mint/80" />;
+  if (bad.length === 1 && bad[0][0] === "bedrock" && /not connected/i.test(bad[0][1]))
+    return (
+      <Link to="/account#aws" className="rounded-full border border-bob-yellow/30 bg-bob-yellow/10 px-2.5 py-1 text-[11px] text-bob-yellow">
+        Connect AWS
+      </Link>
+    );
   return (
     <span title={bad.map(([k, v]) => `${k}: ${v}`).join("\n")} className="flex items-center gap-1 rounded-full border border-rose-400/30 bg-rose-400/10 px-2.5 py-1 text-[11px] text-rose-300">
       <X className="size-3" /> {bad.map(([k]) => k).join(", ")} unavailable
@@ -110,6 +117,14 @@ export function AppShell({ pose = "idle", title, step, status, hasReport, childr
           <Link to="/jobs" title="Your jobs" aria-label="Your jobs" className="grid size-8 place-items-center rounded-full text-dim hover:bg-white/5 hover:text-white">
             <History className="size-4" />
           </Link>
+          <Link to="/account" title="Account" aria-label="Account" className="grid size-8 place-items-center rounded-full text-dim hover:bg-white/5 hover:text-white">
+            <UserRound className="size-4" />
+          </Link>
+          {authMode() === "cognito" && (
+            <button onClick={() => signOut().then(() => window.location.assign("/"))} title="Sign out" aria-label="Sign out" className="grid size-8 place-items-center rounded-full text-dim hover:bg-white/5 hover:text-white">
+              <LogOut className="size-4" />
+            </button>
+          )}
         </div>
       </header>
       <main className="scroll-thin min-h-0 flex-1 overflow-y-auto">{children}</main>

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, CheckCircle2, Loader2, ShieldAlert, XCircle } from "lucide-react";
 import { api, ApiError } from "../api/client";
-import type { RowEvent } from "../api/types";
+import type { CostSummary, Job, RowEvent } from "../api/types";
 import { useJobStream } from "../api/useJobStream";
 import { AppShell } from "../components/AppShell";
 import { Bob, type BobPose } from "../components/Bob";
@@ -24,6 +24,35 @@ function useEta(kept: number, target: number, finished: boolean): string | null 
   const secs = (target - kept) / rate;
   if (secs < 60) return "under a minute left";
   return `about ${Math.round(secs / 60)} min left`;
+}
+
+const LLM_ROLES = new Set(["writer", "planner", "judge", "fallback"]);
+
+// Cost per role, with the model id, "billed to your AWS account" for Bedrock roles and unknown-price badges.
+function CostDetails({ cost, job }: { cost: CostSummary; job: Job | null }) {
+  const roles = Object.keys(cost.by_model).sort((a, b) => Number(LLM_ROLES.has(b)) - Number(LLM_ROLES.has(a)));
+  const provider = (r: string) => (job?.models as unknown as Record<string, { provider?: string } | null> | undefined)?.[r]?.provider ?? "bedrock";
+  return (
+    <ul className="mt-4 grid gap-1.5 border-t border-line pt-3 text-[12px] sm:grid-cols-2">
+      {roles.map((r) => {
+        const m = cost.by_model[r];
+        const bedrock = LLM_ROLES.has(r) && provider(r) === "bedrock";
+        return (
+          <li key={r} className="flex items-center gap-2 rounded-lg bg-white/[0.03] px-3 py-1.5">
+            <span className="w-16 shrink-0 capitalize text-white/85">{r}</span>
+            <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-dim" title={cost.model_ids[r]}>{cost.model_ids[r] ?? `${m.calls} calls`}</span>
+            {cost.price_unknown.includes(r) ? (
+              <span className="rounded bg-bob-yellow/10 px-1.5 text-[10.5px] text-bob-yellow">price unknown</span>
+            ) : (
+              <span className="font-mono text-white/80">{usd(m.usd)}</span>
+            )}
+            {bedrock && <span className="text-[10.5px] text-dim" title="Billed to your AWS account">AWS</span>}
+          </li>
+        );
+      })}
+      <li className="text-[11px] text-dim sm:col-span-2">Rows marked AWS run on Bedrock and are billed to your AWS account.</li>
+    </ul>
+  );
 }
 
 function topReasons(rows: RowEvent[]): [string, number][] {
@@ -106,7 +135,6 @@ export default function BuildScreen() {
   const s = useJobStream(id);
   const [cancelErr, setCancelErr] = useState<ApiError | null>(null);
   const [cheer, setCheer] = useState(false);
-  const [filters, setFilters] = useState(false);
   const done = s.status === "done";
   const stopped = s.status === "error" || s.status === "cancelled";
 
@@ -136,7 +164,9 @@ export default function BuildScreen() {
           : s.detail || "Starting…";
   const eta = useEta(kept, target, done || stopped);
   useTitle(done ? "Build done" : `Building ${kept}/${target}`);
-  const costTitle = s.cost ? Object.entries(s.cost.by_model).map(([k, m]) => `${k}: ${usd(m.usd)} (${m.calls} calls)`).join("\n") : "";
+  const [costOpen, setCostOpen] = useState(false);
+  const ids = s.cost?.model_ids ?? {};
+  const judgeIsWriter = !!ids.judge && ids.judge === ids.writer;
 
   return (
     <AppShell pose={pose} title={s.job?.spec.goal} step="build" status={s.status} hasReport={!!s.report}>
@@ -159,9 +189,11 @@ export default function BuildScreen() {
                 {eta && <span className="shrink-0 text-white/60">· {eta}</span>}
               </div>
             </div>
-            <div className="text-right" title={costTitle}>
+            <div className="text-right">
               <div className="font-display text-[22px] font-bold tabular-nums">{usd(spent)}</div>
-              <div className="text-[11.5px] text-dim">frontier-only {usd(s.cost?.frontier_only_estimate_usd)}</div>
+              <button onClick={() => setCostOpen((v) => !v)} aria-expanded={costOpen} className="text-[11.5px] text-dim hover:text-white">
+                frontier-only {usd(s.cost?.frontier_only_estimate_usd)} · {costOpen ? "hide" : "details"}
+              </button>
             </div>
             {done || s.report ? (
               <Link to={`/jobs/${id}/report`} className="flex items-center gap-1.5 rounded-xl bg-bob-yellow px-4 py-2.5 font-display text-[15px] font-bold text-bob-navy">
@@ -172,6 +204,10 @@ export default function BuildScreen() {
           <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/[0.06]">
             <motion.div className="h-full rounded-full bg-gradient-to-r from-bob-blue to-bob-mint" animate={{ width: `${target ? Math.min(100, (kept / target) * 100) : 0}%` }} transition={{ duration: 0.6 }} />
           </div>
+          {costOpen && s.cost && <CostDetails cost={s.cost} job={s.job} />}
+          {judgeIsWriter && (
+            <div className="mt-3 flex items-center gap-1.5 text-[12px] text-bob-yellow"><ShieldAlert className="size-3.5" /> The judge uses the same model as the writer, so it may miss the writer's own mistakes.</div>
+          )}
           {fallbacks.length > 0 && (
             <div className="mt-3 flex items-center gap-1.5 text-[12px] text-bob-yellow"><ShieldAlert className="size-3.5" /> Using a fallback: {fallbacks.join(", ")}</div>
           )}
@@ -181,13 +217,9 @@ export default function BuildScreen() {
           <section className="rounded-2xl bg-panel p-4">
             <div className="mb-3 flex items-center gap-2">
               <h2 className="font-display text-[16px] font-bold">Coverage</h2>
-              {plan && (
-                <button onClick={() => setFilters((v) => !v)} className="ml-auto text-[12px] text-dim hover:text-white">
-                  {filters ? "Hide filters" : "Filter"}
-                </button>
-              )}
+
             </div>
-            {plan ? <Heatgrid axes={plan.axes} cells={toGridCells(s.cells)} highlight={highlight} filters={filters} /> : <Empty>The coverage map appears once the plan is approved.</Empty>}
+            {plan ? <Heatgrid axes={plan.axes} cells={toGridCells(s.cells)} highlight={highlight} /> : <Empty>The coverage map appears once the plan is approved.</Empty>}
           </section>
           <RowFeed rows={s.rows} jobId={id!} kept={kept} rejected={s.counts.rejected ?? 0} />
         </div>

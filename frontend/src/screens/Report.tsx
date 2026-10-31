@@ -7,7 +7,7 @@ import type { PresetInfo, Report, Row } from "../api/types";
 import { useJobStream } from "../api/useJobStream";
 import { AppShell } from "../components/AppShell";
 import { Bob } from "../components/Bob";
-import { Button, Empty, ErrorBanner, Panel, pct, usd, useTitle } from "../components/ui";
+import { Button, Empty, ErrorBanner, Panel, caseLabel, pct, usd, useTitle } from "../components/ui";
 import { Bars } from "../components/viz/Bars";
 import { Heatgrid, type GridCell } from "../components/viz/Heatgrid";
 
@@ -137,9 +137,9 @@ function ExportPanel({ jobId, files, defaultPreset }: { jobId: string; files: Re
         <ul className="space-y-1 border-t border-line pt-3">
           {Object.keys(out).sort().map((name) => (
             <li key={name}>
-              <a href={api.fileUrl(jobId, name)} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-[12.5px] text-white/85 hover:bg-white/5" download>
+              <button onClick={() => api.download(jobId, name).catch(setError)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12.5px] text-white/85 hover:bg-white/5">
                 <Download className="size-3.5 text-bob-mint" /> <span className="truncate font-mono">{name}</span>
-              </a>
+              </button>
             </li>
           ))}
         </ul>
@@ -158,7 +158,7 @@ function QuickDownload({ jobId, files, preset }: { jobId: string; files: Record<
     try {
       const r = await api.export(jobId, preset, ["jsonl"]);
       const name = Object.keys(r.files).find((n) => n.includes("train") && n.endsWith(".jsonl")) ?? Object.keys(r.files)[0];
-      if (name) window.location.href = api.fileUrl(jobId, name);
+      if (name) await api.download(jobId, name);
     } catch (e) {
       setError(e as ApiError);
     } finally {
@@ -167,15 +167,9 @@ function QuickDownload({ jobId, files, preset }: { jobId: string; files: Record<
   };
   return (
     <div className="flex flex-col items-end gap-1">
-      {existing ? (
-        <a href={api.fileUrl(jobId, existing)} download className="flex items-center gap-2 rounded-xl bg-bob-yellow px-5 py-3 font-display text-[16px] font-bold text-bob-navy">
-          <Download className="size-4" /> Download dataset
-        </a>
-      ) : (
-        <Button tone="yellow" className="px-5 py-3 text-[16px]" busy={busy} onClick={go}>
-          <Download className="size-4" /> Download dataset
-        </Button>
-      )}
+      <Button tone="yellow" className="px-5 py-3 text-[16px]" busy={busy} onClick={existing ? () => api.download(jobId, existing).catch(setError) : go}>
+        <Download className="size-4" /> Download dataset
+      </Button>
       <span className="text-[11px] text-dim">{preset} · JSONL · train split</span>
       {error && <ErrorBanner error={error} title="Download failed" />}
     </div>
@@ -240,9 +234,20 @@ export default function ReportScreen() {
             </div>
 
             {tab === "coverage" && (
-              <section className="rounded-2xl bg-panel p-4">
-                {s.plan ? <Heatgrid axes={s.plan.axes} cells={coverageCells} /> : <div className="text-[12.5px] text-dim">Plan not available.</div>}
-              </section>
+              <div className="space-y-4">
+                <section className="rounded-2xl bg-panel p-4">
+                  {s.plan ? <Heatgrid axes={s.plan.axes} cells={coverageCells} /> : <div className="text-[12.5px] text-dim">Plan not available.</div>}
+                </section>
+                {Object.keys(r.mix_coverage ?? {}).length > 0 && (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {Object.entries(r.mix_coverage).map(([axis, vals]) => (
+                      <Panel key={axis} title={axis === "persona" ? "Who asks" : axis === "difficulty" ? "How hard" : axis}>
+                        <Bars data={Object.entries(vals).map(([k, v]) => [caseLabel(k), v] as [string, number]).sort((a, b) => b[1] - a[1])} format={(v) => `${v.toLocaleString()} rows`} tone="bg-bob-sky/70" />
+                      </Panel>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
 
             {tab === "quality" && (
