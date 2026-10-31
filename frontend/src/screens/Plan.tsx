@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { motion } from "motion/react";
-import { Check, Loader2, Pencil, Play, X } from "lucide-react";
+import { Loader2, Pencil, Play, SlidersHorizontal, X } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { Axis, Cell, Plan, StageName } from "../api/types";
 import { useJobStream, type JobStream } from "../api/useJobStream";
 import { AppShell } from "../components/AppShell";
 import { Bob } from "../components/Bob";
 import { MemeCarousel } from "../components/MemeCarousel";
-import { Button, ErrorBanner, Label, Panel, caseLabel, usd } from "../components/ui";
+import { Button, ErrorBanner, Label, caseLabel, usd } from "../components/ui";
 
 const READ_STAGES: { id: StageName; label: string }[] = [
   { id: "fetch", label: "Fetch sources" },
@@ -21,61 +21,51 @@ const READ_STAGES: { id: StageName; label: string }[] = [
 
 function ReadingView({ s, onCancel }: { s: JobStream; onCancel: () => void }) {
   const failed = s.status === "error" || s.status === "cancelled";
+  const idx = Math.max(0, READ_STAGES.findIndex((x) => x.id === s.lastStage));
+  const cur = READ_STAGES[idx];
+  const p = s.lastStage ? s.stages[s.lastStage] : undefined;
+  const within = p && p.total ? p.done / p.total : 0;
+  const overall = (idx + within) / READ_STAGES.length;
+  const facts = [
+    [s.counts.docs, "docs"],
+    [s.counts.chunks_kept, "useful passages"],
+    [s.counts.topics, "topics"],
+    [s.counts.evidence, "facts"],
+  ].filter(([n]) => n) as [number, string][];
+
   return (
-    <div className="mx-auto grid max-w-5xl gap-4 px-4 py-6 lg:grid-cols-[1.2fr_1fr]">
-      <Panel title="Reading your material" action={!failed && <Button tone="danger" className="!px-3 !py-1 text-[12px]" onClick={onCancel}>Cancel</Button>}>
-        <div className="mb-3 text-[13px] text-dim">{s.detail || "Starting…"}</div>
-        <ol className="space-y-2.5">
-          {READ_STAGES.map((st, i) => {
-            const p = s.stages[st.id];
-            const idx = READ_STAGES.findIndex((x) => x.id === s.lastStage);
-            const done = (p && p.total > 0 && p.done >= p.total) || (idx > i) || !!s.plan;
-            const active = !done && s.lastStage === st.id;
-            const ratio = p && p.total ? p.done / p.total : 0;
-            return (
-              <li key={st.id} className="flex items-center gap-3">
-                <span className={`grid size-5 shrink-0 place-items-center rounded-full text-[10px] font-bold ${done ? "bg-bob-mint text-bob-navy" : active ? "bg-bob-blue text-white" : "bg-white/10 text-dim"}`}>
-                  {done ? <Check className="size-3.5" /> : active ? <Loader2 className="size-3 animate-spin" /> : i + 1}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 text-[13px]">
-                    <span className={done || active ? "text-white" : "text-dim"}>{st.label}</span>
-                    {p && p.total > 0 && <span className="ml-auto font-mono text-[11px] text-dim">{p.done}/{p.total}</span>}
-                  </div>
-                  {active && (
-                    <div className="mt-1 h-1 overflow-hidden rounded-full bg-white/5">
-                      <motion.div className="h-full bg-bob-sky" animate={{ width: `${Math.max(6, ratio * 100)}%` }} />
-                    </div>
-                  )}
-                  {active && p?.detail && <div className="mt-0.5 truncate text-[11.5px] text-dim">{p.detail}</div>}
-                </div>
-              </li>
-            );
-          })}
-        </ol>
-        <div className="mt-4 grid grid-cols-3 gap-2 text-center sm:grid-cols-5">
-          {(["docs", "chunks", "chunks_kept", "topics", "evidence"] as const).map((k) => (
-            <div key={k} className="rounded-xl bg-white/[0.03] p-2">
-              <div className="font-display text-[18px] font-bold">{(s.counts[k] ?? 0).toLocaleString()}</div>
-              <div className="text-[10.5px] text-dim">{k.replace("_", " ")}</div>
-            </div>
-          ))}
+    <div className="mx-auto flex max-w-xl flex-col items-center px-4 py-12 text-center">
+      {failed ? <Bob pose="idle" size={140} /> : <MemeCarousel />}
+      <h1 className="mt-4 font-display text-[26px] font-extrabold">{failed ? "Bob stopped reading" : "Bob is reading your sources"}</h1>
+      <p className="mt-1 text-[14px] text-dim">{failed ? "See the error below." : `${cur.label}${p?.detail ? ` · ${p.detail}` : "…"}`}</p>
+      {!failed && (
+        <div className="mt-6 w-full">
+          <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+            <motion.div className="h-full rounded-full bg-gradient-to-r from-bob-blue to-bob-mint" animate={{ width: `${Math.max(4, overall * 100)}%` }} transition={{ duration: 0.5 }} />
+          </div>
+          <div className="mt-2 flex justify-between text-[11px] text-dim">
+            <span>Step {idx + 1} of {READ_STAGES.length}</span>
+            {facts.length > 0 && <span>{facts.map(([n, l]) => `${n.toLocaleString()} ${l}`).join(" · ")}</span>}
+          </div>
         </div>
-        {(s.error || s.status === "error") && <div className="mt-4"><ErrorBanner error={s.error ?? "The job stopped with an error."} /></div>}
-        {s.logs.filter((l) => l.level !== "info").slice(-3).map((l, i) => (
-          <div key={i} className="mt-2 rounded-lg bg-bob-yellow/10 px-3 py-1.5 text-[12px] text-bob-yellow">{l.message}</div>
+      )}
+      <div className="mt-6 w-full space-y-2 text-left">
+        {(s.error || s.status === "error") && <ErrorBanner error={s.error ?? "The job stopped with an error."} />}
+        {s.logs.filter((l) => l.level !== "info").slice(-2).map((l, i) => (
+          <div key={i} className="rounded-lg bg-bob-yellow/10 px-3 py-1.5 text-[12px] text-bob-yellow">{l.message}</div>
         ))}
-      </Panel>
-      <div className="grid place-items-center rounded-2xl border border-line bg-panel p-6">
-        <MemeCarousel />
       </div>
+      {!failed && (
+        <>
+          <button onClick={onCancel} className="mt-8 text-[12.5px] text-dim hover:text-rose-300">Cancel this job</button>
+        </>
+      )}
     </div>
   );
 }
 
-type Mode = "toggle" | "target";
 
-function PlanGrid({ plan, setCells, mode }: { plan: Plan; setCells: (fn: (c: Cell[]) => Cell[]) => void; mode: Mode }) {
+function PlanGrid({ plan, setCells, showFilters }: { plan: Plan; setCells: (fn: (c: Cell[]) => Cell[]) => void; showFilters: boolean }) {
   const topics = plan.axes.find((a) => a.name === "topic")?.values ?? [];
   const cases = plan.axes.find((a) => a.name === "case_type")?.values ?? [];
   const personas = plan.axes.find((a) => a.name === "persona")?.values ?? [];
@@ -109,11 +99,12 @@ function PlanGrid({ plan, setCells, mode }: { plan: Plan; setCells: (fn: (c: Cel
 
   return (
     <div>
-      <div className="mb-2 flex flex-wrap items-center gap-3">
-        {sel("persona", persona, setPersona, personas)}
-        {sel("difficulty", diff, setDiff, diffs)}
-        <span className="ml-auto text-[11.5px] text-dim">{mode === "toggle" ? "Click a cell, row or column to turn it on or off" : "Click a cell to set the target for each matching cell"}</span>
-      </div>
+      {showFilters && (
+        <div className="mb-2 flex flex-wrap items-center gap-3">
+          {sel("persona", persona, setPersona, personas)}
+          {sel("difficulty", diff, setDiff, diffs)}
+        </div>
+      )}
       <div className="scroll-thin overflow-x-auto">
         <table className="w-full table-fixed border-separate" style={{ borderSpacing: 4 }}>
           <colgroup>
@@ -155,12 +146,13 @@ function PlanGrid({ plan, setCells, mode }: { plan: Plan; setCells: (fn: (c: Cel
                         />
                       ) : (
                         <button
-                          onClick={() => (mode === "toggle" ? toggle(t, cs) : setEditing(key))}
+                          onClick={() => toggle(t, cs)}
+                          onDoubleClick={() => setEditing(key)}
                           disabled={!m.length}
-                          className={`h-9 w-full rounded-lg font-mono text-[11.5px] transition ${
-                            !m.length ? "opacity-20" : on.length ? "bg-bob-blue/25 text-white ring-1 ring-bob-sky/40 hover:bg-bob-blue/35" : "bg-[repeating-linear-gradient(45deg,rgba(255,255,255,0.04)_0_4px,transparent_4px_8px)] text-dim hover:text-white"
-                          } ${partial ? "ring-dashed" : ""}`}
-                          title={`${m.length} cells · ${on.length} on · ${sum} rows`}
+                          className={`h-10 w-full rounded-lg font-mono text-[12px] transition ${
+                            !m.length ? "opacity-20" : on.length ? "bg-bob-blue/30 text-white hover:bg-bob-blue/45" : "bg-white/[0.02] text-dim/60 hover:text-white"
+                          }`}
+                          title={`${sum} rows · click to turn ${on.length ? "off" : "on"} · double-click to change rows`}
                         >
                           {on.length ? sum : "off"}
                           {partial && <span className="ml-1 text-[9px] text-bob-yellow">{on.length}/{m.length}</span>}
@@ -249,14 +241,16 @@ function AxisEditor({ axis, plan, update }: { axis: Axis; plan: Plan; update: (p
 function PlanEditor({ s, jobId }: { s: JobStream; jobId: string }) {
   const nav = useNavigate();
   const [draft, setDraft] = useState<Plan>(() => structuredClone(s.plan!));
-  const [mode, setMode] = useState<Mode>("toggle");
+  const [advanced, setAdvanced] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const original = useMemo(() => s.plan!.cells.filter((c) => c.enabled).reduce((a, c) => a + c.target, 0) || 1, [s.plan]);
-  const enabledTarget = draft.cells.filter((c) => c.enabled).reduce((a, c) => a + c.target, 0);
+  const on = draft.cells.filter((c) => c.enabled);
+  const enabledTarget = on.reduce((a, c) => a + c.target, 0);
   const est = (draft.est_cost_usd * enabledTarget) / original;
   const budget = s.job?.spec.budget_usd ?? 10;
   const locked = s.status !== "awaiting_approval";
+  const count = (axis: string) => new Set(on.map((c) => c.coords[axis])).size;
 
   const start = async () => {
     setBusy(true);
@@ -271,84 +265,65 @@ function PlanEditor({ s, jobId }: { s: JobStream; jobId: string }) {
   };
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6">
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <Bob pose="idea" size={56} />
-        <div className="min-w-0">
-          <h1 className="font-display text-[24px] font-extrabold leading-tight">The coverage plan</h1>
-          <p className="truncate text-[13px] text-dim">{draft.goal}</p>
+    <div className="mx-auto max-w-4xl px-4 py-8">
+      <div className="mb-6 flex flex-wrap items-end gap-4">
+        <div className="min-w-0 flex-1">
+          <h1 className="font-display text-[28px] font-extrabold leading-tight">Here's the plan</h1>
+          <p className="mt-1 text-[14.5px] text-white/75">
+            Bob will write <b className="text-white">{enabledTarget.toLocaleString()} rows</b> across {count("topic")} topics, {count("persona")} kinds of user and {count("case_type")} kinds of question, for about{" "}
+            <b className={est > budget ? "text-rose-300" : "text-white"}>{usd(est, 2)}</b> of your {usd(budget, 2)} budget.
+          </p>
         </div>
-        <div className="ml-auto flex items-center gap-2">
-          {locked ? (
-            <Link to={`/jobs/${jobId}/build`} className="rounded-xl bg-bob-blue px-4 py-2 text-[13.5px]">Plan approved, open the build</Link>
-          ) : (
-            <Button tone="yellow" className="px-5 py-2.5 text-[15px]" busy={busy} disabled={enabledTarget === 0} onClick={start}>
-              <Play className="size-4" /> Start building {enabledTarget.toLocaleString()} rows
-            </Button>
-          )}
-        </div>
+        {locked ? (
+          <Link to={`/jobs/${jobId}/build`} className="rounded-xl bg-bob-blue px-4 py-2.5 text-[14px]">Open the build</Link>
+        ) : (
+          <Button tone="yellow" className="px-6 py-3 text-[16px]" busy={busy} disabled={enabledTarget === 0} onClick={start}>
+            <Play className="size-4" /> Start building
+          </Button>
+        )}
       </div>
       {error && <div className="mb-4"><ErrorBanner error={error} title="Couldn't start the build" /></div>}
 
-      <div className="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)_300px]">
-        <Panel title="Axes">
-          <div className="space-y-4">
-            {draft.axes.map((a) => (
+      {draft.notes.length > 0 && (
+        <div className="mb-4 flex gap-3 rounded-2xl bg-bob-yellow/[0.07] px-4 py-3">
+          <Bob pose="idea" size={40} float={false} />
+          <ul className="space-y-1 text-[13.5px] text-white/85">
+            {draft.notes.slice(0, 3).map((n, i) => <li key={i}>{n}</li>)}
+          </ul>
+        </div>
+      )}
+
+      <section className="rounded-2xl bg-panel p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <h2 className="font-display text-[16px] font-bold">What Bob will write</h2>
+          <span className="ml-auto text-[11.5px] text-dim">Click to turn on or off · double-click to change rows</span>
+        </div>
+        <PlanGrid plan={draft} showFilters={advanced} setCells={(fn) => setDraft((d) => ({ ...d, cells: fn(d.cells) }))} />
+        {est > budget && <div className="mt-3 text-[12.5px] text-rose-300">This is over budget. Bob stops writing at 95% of the budget, or turn off some cells.</div>}
+      </section>
+
+      <button onClick={() => setAdvanced((v) => !v)} className="mt-5 flex items-center gap-2 text-[13px] text-dim hover:text-white">
+        <SlidersHorizontal className="size-4" /> {advanced ? "Hide" : "Fine-tune"} personas, difficulty and the system prompt
+      </button>
+      {advanced && (
+        <div className="mt-3 grid gap-4 md:grid-cols-2">
+          <section className="space-y-4 rounded-2xl bg-panel p-4">
+            {draft.axes.filter((a) => a.name === "persona" || a.name === "difficulty").map((a) => (
               <AxisEditor key={a.name} axis={a} plan={draft} update={setDraft} />
             ))}
-          </div>
-        </Panel>
-
-        <Panel
-          title="Topic × case type"
-          action={
-            <div className="flex rounded-lg border border-line p-0.5 text-[12px]">
-              {(["toggle", "target"] as Mode[]).map((m) => (
-                <button key={m} onClick={() => setMode(m)} className={`rounded-md px-2.5 py-0.5 ${mode === m ? "bg-white/10 text-white" : "text-dim"}`}>
-                  {m === "toggle" ? "On / off" : "Targets"}
-                </button>
-              ))}
-            </div>
-          }
-        >
-          <PlanGrid plan={draft} mode={mode} setCells={(fn) => setDraft((d) => ({ ...d, cells: fn(d.cells) }))} />
-        </Panel>
-
-        <div className="space-y-4">
-          <Panel title="Estimate">
-            <div className="flex items-baseline gap-2">
-              <span className="font-display text-[28px] font-bold">{usd(est, 2)}</span>
-              <span className="text-[12.5px] text-dim">of {usd(budget, 2)} budget</span>
-            </div>
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/5">
-              <div className={`h-full ${est > budget ? "bg-rose-400" : "bg-bob-mint"}`} style={{ width: `${Math.min(100, (est / budget) * 100)}%` }} />
-            </div>
-            <div className="mt-2 text-[12px] text-dim">
-              {enabledTarget.toLocaleString()} rows across {draft.cells.filter((c) => c.enabled).length} cells. Planner estimate, scaled to your edits.
-            </div>
-            {est > budget && <div className="mt-2 text-[12px] text-rose-300">Over budget: Bob stops writing at 95% of the budget.</div>}
-          </Panel>
-          {draft.notes.length > 0 && (
-            <Panel title="Notes from the Planner">
-              <ul className="space-y-2 text-[13px] text-white/85">
-                {draft.notes.map((n, i) => (
-                  <li key={i} className="flex gap-2"><span className="mt-[7px] size-1.5 shrink-0 rounded-full bg-bob-yellow" />{n}</li>
-                ))}
-              </ul>
-            </Panel>
-          )}
-          <Panel title="System prompt">
+          </section>
+          <section className="rounded-2xl bg-panel p-4">
+            <Label>System prompt (ships in every row)</Label>
             <textarea
               value={draft.system_prompt}
               disabled={locked}
               onChange={(e) => setDraft({ ...draft, system_prompt: e.target.value })}
-              rows={6}
+              rows={7}
               className="scroll-thin w-full resize-y rounded-lg border border-line bg-panel-2 p-2 text-[12.5px] leading-relaxed outline-none"
             />
-            <div className="mt-1 text-[11px] text-dim">Ships in every exported row.</div>
-          </Panel>
+          </section>
         </div>
-      </div>
+      )}
     </div>
   );
 }

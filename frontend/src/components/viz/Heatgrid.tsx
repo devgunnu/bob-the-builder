@@ -56,9 +56,11 @@ interface HeatgridProps {
   highlight?: Set<string>;
   onCellClick?: (topic: string, caseType: string, matches: GridCell[]) => void;
   compact?: boolean;
+  /** Persona / difficulty filters stay hidden until asked for (progressive disclosure). */
+  filters?: boolean;
 }
 
-export function Heatgrid({ axes, cells, highlight, onCellClick, compact }: HeatgridProps) {
+export function Heatgrid({ axes, cells, highlight, onCellClick, compact, filters = false }: HeatgridProps) {
   const topics = axes.find((a) => a.name === "topic")?.values ?? [];
   const cases = axes.find((a) => a.name === "case_type")?.values ?? [];
   const personaAxis = axes.find((a) => a.name === "persona");
@@ -95,8 +97,8 @@ export function Heatgrid({ axes, cells, highlight, onCellClick, compact }: Heatg
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-center gap-3">
-        <Facet axis={personaAxis} value={persona} onChange={setPersona} />
-        <Facet axis={diffAxis} value={diff} onChange={setDiff} />
+        {filters && <Facet axis={personaAxis} value={persona} onChange={setPersona} />}
+        {filters && <Facet axis={diffAxis} value={diff} onChange={setDiff} />}
         <div className="ml-auto flex items-center gap-1.5 text-[10.5px] text-dim">
           0%
           <span className="h-2 w-20 rounded-full" style={{ background: `linear-gradient(90deg, ${fill(0)}, ${fill(0.5)}, ${fill(1)})` }} />
@@ -161,7 +163,7 @@ export function Heatgrid({ axes, cells, highlight, onCellClick, compact }: Heatg
             {h.hot && <span className="text-bob-yellow"> · in this gap round</span>}
           </>
         ) : (
-          "Hover a cell for details."
+          ""
         )}
       </div>
     </div>

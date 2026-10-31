@@ -148,10 +148,47 @@ function ExportPanel({ jobId, files, defaultPreset }: { jobId: string; files: Re
   );
 }
 
+function QuickDownload({ jobId, files, preset }: { jobId: string; files: Record<string, string>; preset: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<ApiError | null>(null);
+  const existing = Object.keys(files).find((n) => n.startsWith(`${preset}/`) && n.includes("train") && n.endsWith(".jsonl"));
+  const go = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api.export(jobId, preset, ["jsonl"]);
+      const name = Object.keys(r.files).find((n) => n.includes("train") && n.endsWith(".jsonl")) ?? Object.keys(r.files)[0];
+      if (name) window.location.href = api.fileUrl(jobId, name);
+    } catch (e) {
+      setError(e as ApiError);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-col items-end gap-1">
+      {existing ? (
+        <a href={api.fileUrl(jobId, existing)} download className="flex items-center gap-2 rounded-xl bg-bob-yellow px-5 py-3 font-display text-[16px] font-bold text-bob-navy">
+          <Download className="size-4" /> Download dataset
+        </a>
+      ) : (
+        <Button tone="yellow" className="px-5 py-3 text-[16px]" busy={busy} onClick={go}>
+          <Download className="size-4" /> Download dataset
+        </Button>
+      )}
+      <span className="text-[11px] text-dim">{preset} · JSONL · train split</span>
+      {error && <ErrorBanner error={error} title="Download failed" />}
+    </div>
+  );
+}
+
+type RTab = "coverage" | "quality" | "spot" | "export";
+
 export default function ReportScreen() {
   const { id } = useParams();
   const s = useJobStream(id);
   const r = s.report;
+  const [tab, setTab] = useState<RTab>("coverage");
 
   const coverageCells: GridCell[] = useMemo(
     () => (r ? r.coverage.map((c) => ({ id: c.cell_id, coords: c.coords, enabled: true, target: c.target, kept: c.kept, rejected: c.rejected, generated: c.kept + c.rejected, judged: 0 })) : []),
@@ -161,10 +198,18 @@ export default function ReportScreen() {
   const kept = r ? r.coverage.reduce((a, c) => a + c.kept, 0) : 0;
   const cost = s.cost ?? s.job?.cost;
   const ratio = cost && cost.total_usd > 0 ? cost.frontier_only_estimate_usd / cost.total_usd : 0;
+  const preset = s.job?.spec.preset ?? "openai-chat";
+
+  const TABS: [RTab, string][] = [
+    ["coverage", "Coverage"],
+    ["quality", "Quality"],
+    ["spot", `Spot-check${r?.spot_check.n ? ` ${r.spot_check.up ?? 0}/${r.spot_check.n}` : ""}`],
+    ["export", "Other formats"],
+  ];
 
   return (
     <AppShell pose={r ? "cheer" : "think"} title={s.job?.spec.goal}>
-      <div className="mx-auto max-w-7xl space-y-3 px-4 py-5">
+      <div className="mx-auto max-w-5xl px-4 py-8">
         <ErrorBanner error={s.loadError} title="Couldn't load this job" />
         {!r ? (
           <Empty>
@@ -173,58 +218,73 @@ export default function ReportScreen() {
           </Empty>
         ) : (
           <>
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3">
-              <Bob pose="cheer" size={64} />
-              <div>
-                <h1 className="font-display text-[26px] font-extrabold leading-tight">Data quality report</h1>
-                <p className="text-[13px] text-dim">Every number here comes from this job's checks and cost ledger.</p>
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-6 flex flex-wrap items-center gap-5">
+              <Bob pose="cheer" size={88} />
+              <div className="min-w-0 flex-1">
+                <h1 className="font-display text-[30px] font-extrabold leading-tight">{kept.toLocaleString()} verified rows are ready</h1>
+                <p className="mt-1 text-[14px] text-white/70">
+                  {covered} of {r.coverage.length} cells hit their target · {pct(r.judge_rate)} needed the judge · cost {usd(cost?.total_usd)}
+                  {ratio ? ` (frontier-only ${usd(cost?.frontier_only_estimate_usd)}, ${ratio.toFixed(0)}x more)` : ""}
+                </p>
               </div>
+              <QuickDownload jobId={id!} files={s.files} preset={preset} />
             </motion.div>
 
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
-              <Stat label="Kept rows" value={kept.toLocaleString()} tone="text-bob-mint" />
-              <Stat label="Cells at target" value={`${covered}/${r.coverage.length}`} sub={pct(r.coverage.length ? covered / r.coverage.length : 0)} />
-              <Stat label="Sent to judge" value={pct(r.judge_rate)} tone="text-bob-yellow" />
-              <Stat label="Judge agreement" value={pct(r.judge_agreement)} sub="tier 2 vs tier 3" />
-              <Stat label="Spent" value={usd(cost?.total_usd)} sub={ratio ? `frontier-only ${usd(cost?.frontier_only_estimate_usd)} (${ratio.toFixed(0)}x)` : undefined} />
-              <Stat label="Spot-check" value={r.spot_check.n ? `${r.spot_check.up ?? 0}/${r.spot_check.n}` : "not yet"} sub={r.spot_check.jev_accuracy !== undefined ? `Jev accuracy ${pct(r.spot_check.jev_accuracy)}` : undefined} />
+            <div className="mb-4 flex gap-1 rounded-2xl bg-panel p-1.5" role="tablist">
+              {TABS.map(([t, label]) => (
+                <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`flex-1 rounded-xl py-2 text-[13px] transition ${tab === t ? "bg-white/[0.08] text-white" : "text-dim hover:text-white"}`}>
+                  {label}
+                </button>
+              ))}
             </div>
 
-            <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_340px]">
-              <Panel title="Final coverage">
-                {s.plan ? <Heatgrid axes={s.plan.axes} cells={coverageCells} compact /> : <div className="text-[12.5px] text-dim">Plan not available.</div>}
-              </Panel>
-              <Panel title="Spot-check" action={<span className="text-[11px] text-dim">updates the report</span>}>
+            {tab === "coverage" && (
+              <section className="rounded-2xl bg-panel p-4">
+                {s.plan ? <Heatgrid axes={s.plan.axes} cells={coverageCells} /> : <div className="text-[12.5px] text-dim">Plan not available.</div>}
+              </section>
+            )}
+
+            {tab === "quality" && (
+              <div className="grid gap-4 md:grid-cols-2">
+                <Panel title="Pass rate by check">
+                  <Bars data={Object.entries(r.pass_rate_by_check).sort((a, b) => a[1] - b[1])} format={(v) => pct(v)} max={1} />
+                </Panel>
+                <Panel title="Why rows were rejected">
+                  <Bars data={Object.entries(r.reject_reasons).sort((a, b) => b[1] - a[1])} tone="bg-rose-400/70" />
+                  <div className="mt-3 text-[12px] text-dim">{r.duplicates_removed.toLocaleString()} duplicates removed</div>
+                </Panel>
+                <Panel title="Judge">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Stat label="Sent to the judge" value={pct(r.judge_rate)} tone="text-bob-yellow" />
+                    <Stat label="Agreed with Jev" value={pct(r.judge_agreement)} />
+                  </div>
+                </Panel>
+                <Panel title="Rounds">
+                  <table className="w-full text-[12.5px]">
+                    <thead><tr className="text-left text-[11px] text-dim"><th className="pb-1 font-medium">Round</th><th className="pb-1 font-medium">Cells</th><th className="pb-1 text-right font-medium">Kept</th></tr></thead>
+                    <tbody>
+                      {r.rounds.map((x) => (
+                        <tr key={x.n} className="border-t border-line"><td className="py-1.5">{x.n}</td><td>{x.cells}</td><td className="text-right font-mono">{x.kept.toLocaleString()}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="mt-3 text-[12px] text-dim">Reply length: p50 {r.token_stats.p50 ?? "–"} · p95 {r.token_stats.p95 ?? "–"} · max {r.token_stats.max ?? "–"} tokens</div>
+                </Panel>
+              </div>
+            )}
+
+            {tab === "spot" && (
+              <section className="mx-auto max-w-2xl rounded-2xl bg-panel p-5">
+                <p className="mb-4 text-[13px] text-dim">Read a few rows and say if they're right. Your answers update the report and measure how accurate Jev was on this job.</p>
                 <SpotCheck jobId={id!} report={r} onReport={s.setReport} />
-              </Panel>
-            </div>
+              </section>
+            )}
 
-            <div className="grid gap-3 lg:grid-cols-3">
-              <Panel title="Pass rate by check">
-                <Bars data={Object.entries(r.pass_rate_by_check).sort((a, b) => a[1] - b[1])} format={(v) => pct(v)} max={1} />
-              </Panel>
-              <Panel title="Reject reasons">
-                <Bars data={Object.entries(r.reject_reasons).sort((a, b) => b[1] - a[1])} tone="bg-rose-400/70" />
-                <div className="mt-3 text-[12px] text-dim">{r.duplicates_removed.toLocaleString()} duplicates removed</div>
-              </Panel>
-              <Panel title="Rounds and length">
-                <table className="w-full text-[12.5px]">
-                  <thead><tr className="text-left text-[11px] text-dim"><th className="pb-1 font-medium">Round</th><th className="pb-1 font-medium">Cells</th><th className="pb-1 text-right font-medium">Kept</th></tr></thead>
-                  <tbody>
-                    {r.rounds.map((x) => (
-                      <tr key={x.n} className="border-t border-line"><td className="py-1.5">{x.n}</td><td>{x.cells}</td><td className="text-right font-mono">{x.kept.toLocaleString()}</td></tr>
-                    ))}
-                  </tbody>
-                </table>
-                <div className="mt-3 flex justify-between text-[12px] text-dim">
-                  <span>tokens p50 {r.token_stats.p50 ?? "–"}</span><span>p95 {r.token_stats.p95 ?? "–"}</span><span>max {r.token_stats.max ?? "–"}</span>
-                </div>
-              </Panel>
-            </div>
-
-            <Panel title="Export">
-              <ExportPanel jobId={id!} files={s.files} defaultPreset={s.job?.spec.preset} />
-            </Panel>
+            {tab === "export" && (
+              <section className="mx-auto max-w-2xl rounded-2xl bg-panel p-5">
+                <ExportPanel jobId={id!} files={s.files} defaultPreset={preset} />
+              </section>
+            )}
           </>
         )}
       </div>

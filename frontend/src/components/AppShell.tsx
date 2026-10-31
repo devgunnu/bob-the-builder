@@ -1,10 +1,11 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, useParams } from "react-router";
-import { Check, CircleDashed, History, X } from "lucide-react";
+import { History, X } from "lucide-react";
 import { api } from "../api/client";
 import type { Health } from "../api/types";
 import { Bob, type BobPose } from "./Bob";
 
+// Quiet by default: nothing when every provider is healthy, one chip when something is wrong.
 function HealthChips() {
   const [h, setH] = useState<Health | null>(null);
   const [down, setDown] = useState(false);
@@ -23,22 +24,13 @@ function HealthChips() {
     };
   }, []);
   if (down) return <span className="rounded-full border border-rose-400/30 bg-rose-400/10 px-2.5 py-1 text-[11px] text-rose-300">API offline</span>;
-  if (!h) return <span className="flex items-center gap-1 text-[11px] text-dim"><CircleDashed className="size-3 animate-spin" /> checking keys</span>;
+  if (!h) return null;
+  const bad = Object.entries(h.keys).filter(([, v]) => v !== "ok");
+  if (!bad.length) return <span title="All services are reachable" className="size-2 rounded-full bg-bob-mint/80" />;
   return (
-    <div className="hidden items-center gap-1 md:flex">
-      {Object.entries(h.keys).map(([k, v]) => (
-        <span
-          key={k}
-          title={v === "ok" ? `${k}: ok` : `${k}: ${v}`}
-          className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] ${
-            v === "ok" ? "border-bob-mint/25 text-bob-mint/90" : "border-rose-400/30 text-rose-300"
-          }`}
-        >
-          {v === "ok" ? <Check className="size-3" /> : <X className="size-3" />}
-          {k}
-        </span>
-      ))}
-    </div>
+    <span title={bad.map(([k, v]) => `${k}: ${v}`).join("\n")} className="flex items-center gap-1 rounded-full border border-rose-400/30 bg-rose-400/10 px-2.5 py-1 text-[11px] text-rose-300">
+      <X className="size-3" /> {bad.map(([k]) => k).join(", ")} unavailable
+    </span>
   );
 }
 
@@ -73,8 +65,8 @@ export function AppShell({ pose = "idle", title, children }: { pose?: BobPose; t
         )}
         <div className="ml-auto flex items-center gap-2">
           <HealthChips />
-          <Link to="/jobs" className="flex items-center gap-1 rounded-full border border-line px-2.5 py-1 text-[11.5px] text-dim hover:text-white">
-            <History className="size-3.5" /> Jobs
+          <Link to="/jobs" title="Your jobs" aria-label="Your jobs" className="grid size-8 place-items-center rounded-full text-dim hover:bg-white/5 hover:text-white">
+            <History className="size-4" />
           </Link>
         </div>
       </header>
