@@ -11,8 +11,52 @@ import idea from "../assets/bob/idea.webp";
 import cheer1 from "../assets/bob/cheer-1.webp";
 import cheer2 from "../assets/bob/cheer-2.webp";
 import cheer3 from "../assets/bob/cheer-3.webp";
+import dive1 from "../assets/bob/dive-1.webp";
+import dive2 from "../assets/bob/dive-2.webp";
+import dive3 from "../assets/bob/dive-3.webp";
+import read1 from "../assets/bob/read-1.webp";
+import read2 from "../assets/bob/read-2.webp";
+import read3 from "../assets/bob/read-3.webp";
+import type1 from "../assets/bob/type-1.webp";
+import type2 from "../assets/bob/type-2.webp";
+import type3 from "../assets/bob/type-3.webp";
+import stamp1 from "../assets/bob/stamp-1.webp";
+import stamp2 from "../assets/bob/stamp-2.webp";
+import stamp3 from "../assets/bob/stamp-3.webp";
+import nope1 from "../assets/bob/nope-1.webp";
+import nope2 from "../assets/bob/nope-2.webp";
+import nope3 from "../assets/bob/nope-3.webp";
+import nope4 from "../assets/bob/nope-4.webp";
+import point1 from "../assets/bob/point-1.webp";
+import point2 from "../assets/bob/point-2.webp";
+import carry1 from "../assets/bob/carry-1.webp";
+import carry2 from "../assets/bob/carry-2.webp";
+import carry3 from "../assets/bob/carry-3.webp";
+import blink1 from "../assets/bob/blink-1.webp";
+import blink2 from "../assets/bob/blink-2.webp";
+import blink3 from "../assets/bob/blink-3.webp";
+import sweat1 from "../assets/bob/sweat-1.webp";
+import sweat2 from "../assets/bob/sweat-2.webp";
+import sleep1 from "../assets/bob/sleep-1.webp";
+import sleep2 from "../assets/bob/sleep-2.webp";
 
-export type BobPose = "hero" | "idle" | "wave" | "think" | "idea" | "cheer";
+export type BobPose =
+  | "hero"
+  | "idle"
+  | "wave"
+  | "think"
+  | "idea"
+  | "cheer"
+  | "dive"
+  | "read"
+  | "type"
+  | "stamp"
+  | "nope"
+  | "point"
+  | "carry"
+  | "blink"
+  | "sweat"
+  | "sleep";
 
 // Each pose is a short frame loop cut from the character sheets.
 const POSES: Record<BobPose, { frames: string[]; ms: number }> = {
@@ -22,6 +66,16 @@ const POSES: Record<BobPose, { frames: string[]; ms: number }> = {
   think: { frames: [think1, think2], ms: 700 },
   idea: { frames: [idea], ms: 1000 },
   cheer: { frames: [cheer1, cheer2, cheer3, cheer2], ms: 220 },
+  dive: { frames: [dive1, dive2, dive3], ms: 180 },
+  read: { frames: [read1, read2, read3], ms: 450 },
+  type: { frames: [type1, type2, type3], ms: 220 },
+  stamp: { frames: [stamp1, stamp2, stamp3], ms: 260 },
+  nope: { frames: [nope1, nope2, nope3, nope4], ms: 260 },
+  point: { frames: [point1, point2], ms: 480 },
+  carry: { frames: [carry1, carry2, carry3], ms: 300 },
+  blink: { frames: [blink1, blink2, blink3], ms: 260 },
+  sweat: { frames: [sweat1, sweat2], ms: 550 },
+  sleep: { frames: [sleep1, sleep2], ms: 800 },
 };
 
 // Warm the cache so pose switches never flash.
