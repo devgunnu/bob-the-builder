@@ -1,16 +1,18 @@
 # Bob the Builder: Contracts (v4, data factory)
 
-> Source of truth for all 8 coding agents. Lock in the first 20 minutes (T+0:00 to T+0:20). Change only by agreement between Aaditya and Gunbir, and commit the change here first.
+> Source of truth for all 9 coding agents (A1 to A5, G1 to G4). Lock in the first 20 minutes (T+0:00 to T+0:20). Change only by agreement between Aaditya and Gunbir, and commit the change here first.
 > v4 replaces v1 to v3. Templates, question programs, grammar banks and Architect-written generator code are retired (DECISIONS D18).
+> Bob deploys to AWS serverless: Lambda API + one Fargate worker task per job (DECISIONS D25). A5 Deploy owns it (section 13). Local mode stays the default.
 
 ## 0. Ground rules for every agent
 
 1. **One owner per file.** Only edit files that your brief owns (section 1). If you need a change in another file, write a note in `.agents/CHANGES_REQUESTED.md` and tell your builder.
-2. **No mocks, no fake data.** Every call to Bedrock, Jev, ScaleDown, Firecrawl and Composio is real, from the first line of code. Tests use real calls on small real inputs (the `demo/smoke/` corpus). If a key does not work, fix the key or switch to the documented real fallback (section 5); never stub the call.
-3. **Everything is async.** Pipeline functions are `async def`. External calls go through a client with a semaphore, retries (3, exponential backoff), a disk cache, and a cost ledger entry.
+2. **No mocks, no fake data.** Every call to Bedrock, Jev, ScaleDown, Firecrawl and Composio is real, from the first line of code. Tests use real calls on small real inputs (the `demo/smoke/` corpus). If a key does not work, fix the key or switch to the documented real fallback (section 5); never stub the call. This rule covers AWS too: tests of the aws backends use real DynamoDB and real S3. No moto, no LocalStack (D23).
+3. **Everything is async.** Pipeline functions are `async def`. External calls go through a client with a semaphore, retries (3, exponential backoff), the response cache (`core/cache.py`), and a cost ledger entry.
 4. **Dependencies:** A1 owns `backend/pyproject.toml`, G3 owns `frontend/package.json`. To add a dependency, add a `CHANGES_REQUESTED.md` entry; the owner adds it within 10 minutes. In the first 20 minutes, A1 and G3 add every dependency named in this file up front.
 5. **Python 3.12, pydantic v2, ruff format.** TypeScript strict, React 18, Vite.
 6. **Commit small and often** to your builder's branch: `aaditya/*` or `gunbir/*`. Merge to `main` at each checkpoint.
+7. **Storage and process rules (D25).** Code writes files only under `settings.runs_dir` (`BOB_RUNS_DIR`). Never hard-code `runs/`. Durable data goes only through `Store`, `Blobs` and `EventLog` (section 7). The API process never starts background work. Long work runs only in the job runner (local: asyncio task; aws: Fargate worker).
 
 ## 1. Repository layout and ownership
 
@@ -21,10 +23,13 @@ backend/
     config.py                       A1   settings from env (section 9)
     core/
       models.py                     A1   ALL shared pydantic models (section 2). Written first.
-      store.py                      A1   job store: in-memory + runs/<job_id>/ on disk
-      events.py                     A1   event bus, SSE event log, replay
+      store.py                      A1   Store protocol + local impl (in-memory + runs/<job_id>/ on disk); aws impl in bob/aws/store.py
+      events.py                     A1   EventLog protocol + local impl (in-memory log + queues), SSE replay; aws impl in bob/aws/events.py
+      blobs.py                      A1   Blobs protocol + local impl (files under settings.runs_dir); aws impl in bob/aws/blobs.py
+      runner.py                     A1   Runner protocol + local impl (asyncio task); aws impl in bob/aws/runner.py
+      backends.py                   A1   get_blobs() get_store() get_events() get_runner(): pick by BOB_ENV
       ledger.py                     A1   cost ledger + frontier-only estimate
-      cache.py                      A1   disk cache for all external calls
+      cache.py                      A1   real-response cache for all external calls, stored through Blobs (cache/<sha256>.json)
     llm/
       bedrock.py                    A1   Writer / Judge / Planner client (Anthropic on Bedrock)
     clients/
@@ -45,6 +50,11 @@ backend/
     export/
       presets.py formats.py manifest.py   A4
     orchestrator.py                 A1   job state machine; the only API the web layer calls
+    worker.py                       A5   Fargate entry: load secrets -> build Orchestrator -> await run_job(job_id, mode) -> exit code
+    aws/
+      blobs.py store.py events.py   A5   aws impls of the section 7 protocols (S3, DynamoDB); boto3 in asyncio.to_thread
+      runner.py                     A5   ecs.run_task / ecs.stop_task
+      secrets.py                    A5   load the bob/keys secret JSON into the environment
     connectors/
       __init__.py                   G1   fetch_documents() dispatch
       upload.py parsers.py          G1   file upload + PDF/DOCX/MD/HTML/TXT/CSV -> Document
@@ -54,11 +64,21 @@ backend/
     api/
       app.py routes.py sse.py       G1   FastAPI app, routes (section 6), SSE
   tests/                            each owner tests their own modules
+  Dockerfile                        A5   one image for the API Lambda and the Fargate worker (section 13)
 frontend/                           G3 (shell, setup, plan screens, package.json), G4 (build, rows, report screens, src/components/viz/*)
   src/api/client.ts types.ts        G3 owns; types.ts mirrors section 2 exactly
 demo/                               G2: smoke/ (small real corpus for tests), corpus/ (cached real crawl of the demo docs)
-runs/                               gitignored job outputs
+runs/                               gitignored job outputs (local mode; path = BOB_RUNS_DIR)
+infra/                              A5   AWS CDK v2 app (Python)
+  app.py cdk.json requirements.txt  A5   requirements.txt = aws-cdk-lib, constructs (A5 owns it)
+  bob_infra/data_stack.py           A5   stack BobData: table, data bucket, frontend bucket, secret
+  bob_infra/app_stack.py            A5   stack BobApp: image, Lambda + Function URL, ECS cluster + task def, CloudFront, IAM
+  deploy.sh README.md               A5   one-command deploy; how to deploy and tear down
+.dockerignore                       A5   root; the Docker build context is the repo root
+.gitignore                          A5   root; .env, secrets.json, runs/, cdk.out/, infra/outputs.json, node_modules/, dist/, __pycache__/
 ```
+
+A5 asks A1 for `boto3` in `backend/pyproject.toml`. A1 adds it up front at T+0:15.
 
 ## 2. Core models (`backend/bob/core/models.py`)
 
@@ -284,7 +304,7 @@ class Report(BaseModel):
 # A2: reading
 def chunk_documents(docs: list[Document]) -> list[Chunk]            # heading-aware, 300-500 tokens, keeps offsets
 def heuristic_filter(chunks: list[Chunk]) -> list[Chunk]            # sets kept / drop_reason; free
-def embed(texts: list[str]) -> "np.ndarray"                         # model2vec potion-base-8M, CPU
+def embed(texts: list[str]) -> "np.ndarray"                         # model2vec potion-base-8M, CPU; loads from BOB_EMBED_MODEL_PATH when set
 def dedup_chunks(chunks: list[Chunk]) -> list[Chunk]                # exact hash + cosine > 0.95
 async def triage(chunks: list[Chunk]) -> list[Chunk]                # one Jev call per chunk, 4 questions
 async def build_topics(chunks: list[Chunk], goal: str) -> list[Topic]   # k-means (k = clamp(sqrt(n), 4, 20)),
@@ -313,7 +333,7 @@ async def verify(cands: list[Candidate], ctx: "GenContext") -> list[Row]
 def build_dpo_pairs(rows: list[Row]) -> list[DPOPair]
 def build_report(job: Job, rows: list[Row]) -> Report
 def export(job: Job, rows: list[Row], pairs: list[DPOPair], preset: str,
-           formats: list[str], out_dir: "Path") -> dict[str, str]
+           formats: list[str], out_dir: "Path") -> dict[str, str]   # out_dir is under settings.runs_dir (section 11)
 
 # A1: shared context object passed through the pipeline. Lives in core/models.py
 # (plain class, imports EvidenceIndex / Retriever under TYPE_CHECKING only).
@@ -424,50 +444,118 @@ Base `/api`. JSON unless stated.
 
 | Method | Path | Body / query | Returns |
 |---|---|---|---|
-| POST | `/uploads` | multipart files | `{upload_ids: [...], files: [{id, name, bytes}]}` |
+| GET | `/ping` | | `{ok: true}` (no external calls; Lambda readiness check) |
+| POST | `/uploads` | multipart files (body <= 6 MB) | `{upload_ids: [...], files: [{id, name, bytes}]}` |
+| POST | `/uploads/presign` | `{name, bytes}` | `{upload_id, put_url}` (P1: presigned S3 PUT for files > 6 MB) |
 | GET | `/connectors` | | `[{toolkit, connected: bool, account_id?}]` |
 | POST | `/connectors/{toolkit}/connect` | `{redirect_url}` | `{auth_url, connection_id}` (Composio OAuth) |
 | GET | `/connectors/{toolkit}/status` | `?connection_id=` | `{connected, account_id}` |
 | GET | `/connectors/{toolkit}/browse` | `?account_id=&q=` | `[{id, title, kind}]` (pages, spaces, projects) |
-| POST | `/sources/preview` | `SourceSpec` | `{documents: [{uri, title, chars}]}` (fetch only, no job) |
+| POST | `/sources/preview` | `SourceSpec` | `{documents: [{uri, title, chars}], capped: bool}` (fetch only, no job; max 10 pages or 20 s) |
 | POST | `/jobs` | `JobSpec` | `Job` (status moves to `awaiting_approval` when the plan is ready) |
 | GET | `/jobs` | | `[Job]` (summary fields) |
 | GET | `/jobs/{id}` | | `Job` |
-| PUT | `/jobs/{id}/plan` | `Plan` (edited) | `Job` (starts the build) |
+| PUT | `/jobs/{id}/plan` | `Plan` (edited) | `Job` (sets the `approved` control flag; the runner starts the build) |
 | POST | `/jobs/{id}/cancel` | | `Job` |
 | GET | `/jobs/{id}/events` | header `Last-Event-ID` | SSE stream (section 8) |
 | GET | `/jobs/{id}/rows` | `?verdict=&cell_id=&offset=&limit=` | `{total, rows: [Row]}` |
 | GET | `/jobs/{id}/rows/{row_id}` | | `Row` |
 | POST | `/jobs/{id}/rows/{row_id}/spot-check` | `{ok: bool}` | `Report` |
 | POST | `/jobs/{id}/export` | `{preset, formats}` | `{files: {...}}` |
-| GET | `/jobs/{id}/files/{name}` | | file download |
+| GET | `/jobs/{id}/files/{name}` | | file download (aws: 302 to a presigned S3 URL) |
 | POST | `/jobs/{id}/resync` | | `Job` (P1, section 10) |
 | GET | `/presets` | | `[{name, formats, description}]` |
 | GET | `/health` | | `{keys: {bedrock, jev, scaledown, firecrawl, composio}}` (each key: a real test call result, `ok` or the error) |
+
+Route rules (D25, G1):
+- Every route returns in < 25 s (CloudFront origin timeout). The SSE route is the only long response.
+- A route never starts background work. A task that starts after the response freezes in Lambda. Long work goes to the runner (section 7).
+- Request bodies are <= 6 MB (Lambda limit). `POST /uploads` keeps multipart for P0. The demo files are small.
+- `POST /uploads` stores each file through `Blobs.put("runs/uploads/<upload_id>/<name>")`. It writes nothing outside `settings.runs_dir`.
+- `POST /sources/preview` stops at 10 pages or 20 s. It sets `capped: true` when it stops early.
+- `GET /jobs/{id}/files/{name}`: if `blobs.url(key, filename)` returns a URL, reply 302 to it. Else stream the local file.
+- `GET /ping` makes no external calls. `/health` makes paid calls, so it must not run on each cold start.
+- Composio OAuth `redirect_url` = `BOB_PUBLIC_URL` in aws mode.
+- The frontend calls the relative base `/api` (same origin through CloudFront). The Vite dev server proxies `/api` to `localhost:8000`. No hard-coded host (G3).
 
 ## 7. Orchestrator (A1) and connector (G1/G2) interfaces
 
 ```python
 # bob/orchestrator.py: the only backend API the web layer calls
 class Orchestrator:
-    async def create_job(self, spec: JobSpec) -> Job            # background: ingest -> read -> plan -> awaiting_approval
-    async def approve_plan(self, job_id: str, plan: Plan) -> Job  # background: build -> fill gaps -> report -> export -> done
-    async def cancel(self, job_id: str) -> Job
-    def get_job(self, job_id: str) -> Job
-    def list_jobs(self) -> list[Job]
-    def list_rows(self, job_id, verdict=None, cell_id=None, offset=0, limit=50) -> tuple[int, list[Row]]
-    def get_row(self, job_id, row_id) -> Row
+    async def create_job(self, spec: JobSpec) -> Job            # save Job + emit job.status created + runner.start(id, "create"); returns at once (< 1 s)
+    async def run_job(self, job_id: str, mode: Literal["create", "resync"]) -> None
+                                                                # the whole job body; both runners call it:
+                                                                # ingest -> read -> plan -> wait for approval -> build -> fill gaps -> report -> export -> done
+    async def approve_plan(self, job_id: str, plan: Plan) -> Job  # store.set_control(id, "approved", plan); returns the Job
+    async def cancel(self, job_id: str) -> Job                  # store.set_control(id, "cancel"); see the rules below
+    async def get_job(self, job_id: str) -> Job                 # async: reads DynamoDB / S3 in aws mode
+    async def list_jobs(self) -> list[Job]
+    async def list_rows(self, job_id, verdict=None, cell_id=None, offset=0, limit=50) -> tuple[int, list[Row]]
+    async def get_row(self, job_id, row_id) -> Row
     async def spot_check(self, job_id, row_id, ok: bool) -> Report
     async def export(self, job_id, preset, formats) -> dict[str, str]
-    async def resync(self, job_id) -> Job                       # P1
+    async def resync(self, job_id) -> Job                       # P1: runner.start(id, "resync")
     def subscribe(self, job_id, last_event_id: int | None) -> AsyncIterator["Event"]
 
 # bob/connectors/__init__.py: the only connector API the orchestrator calls
 async def fetch_documents(spec: SourceSpec, job_id: str,
                           progress: Callable[[int, int, str], Awaitable[None]]) -> list[Document]
+
+# bob/connectors/upload.py (G1): read an upload through Blobs, not from a disk path
+async def read_upload(upload_id: str) -> list[tuple[str, bytes]]   # [(name, data)] from "runs/uploads/<upload_id>/"
 ```
 
-Build loop inside `approve_plan` (A1 writes it, calling A3/A4):
+Job lifecycle rules (A1):
+- `run_job` waits for approval. It polls `store.get_control` every `BOB_CONTROL_POLL_S` (1 s), up to `BOB_APPROVAL_WAIT_MINUTES` (60). Then it runs the build loop.
+- `run_job` checks the control flag for `cancel` between stages and before each Writer call.
+- `cancel`: if no worker runs, set status `cancelled` and emit the event. The aws runner calls `stop()` after 10 s if the task still runs.
+- The worker calls `store.put_job` on each status change and at most every 2 s.
+- **Single event writer.** The API appends events only in `create_job`, and in `cancel` when no worker runs. The worker reads `last_seq` at start. While it runs, it is the only writer.
+- **Single job writer.** While a worker runs, only the worker writes the job, rows and events. `spot_check` and `export` run in the API process and write rows, the report and files. They are allowed only when the job status is `done`, `cancelled` or `error` (no worker runs). Otherwise the route returns HTTP 409 with `{"error": "job is running"}`. They do not emit events. They must finish in less than 25 s.
+- The API emits the `stage.progress` event `{stage: "fetch", done: 0, total: 0, detail: "starting worker"}` in `create_job`, before `runner.start`. This shows the Fargate cold start in the UI.
+- After export, the orchestrator calls `blobs.upload_tree(runs_dir/<job_id>/export, "runs/<job_id>/export")`. In local mode this is a no-op.
+- Fargate keeps one worker task per job across the plan approval. So the read state (chunks, embeddings, EvidenceIndex, Retriever) stays in the process. Nothing serializes these objects.
+
+### Backend protocols (A1 defines them and the local impls by T+0:15; A5 writes the aws impls)
+```python
+# core/blobs.py (A1)  keys are relative paths that mirror the local runs/ tree, e.g. "runs/<job_id>/export/openai-chat/train/train.jsonl"
+class Blobs(Protocol):
+    async def put(self, key: str, data: bytes, content_type: str | None = None) -> None
+    async def get(self, key: str) -> bytes
+    async def exists(self, key: str) -> bool
+    async def list(self, prefix: str) -> list[str]
+    async def upload_tree(self, local_dir: Path, prefix: str) -> list[str]
+    async def url(self, key: str, filename: str | None = None) -> str | None   # aws: presigned GET (1 h); local: None (route streams the file)
+
+# core/store.py (A1)
+class Store(Protocol):
+    async def put_job(self, job: Job) -> None          # worker calls it on each status change and at most every 2 s
+    async def get_job(self, job_id: str) -> Job
+    async def list_jobs(self) -> list[Job]
+    async def put_rows(self, job_id: str, rows: list[Row]) -> None
+    async def list_rows(self, job_id, verdict=None, cell_id=None, offset=0, limit=50) -> tuple[int, list[Row]]
+    async def get_row(self, job_id: str, row_id: str) -> Row
+    async def set_control(self, job_id: str, control: Literal["approved", "cancel"], plan: Plan | None = None) -> None
+    async def get_control(self, job_id: str) -> str | None
+
+# core/events.py (A1)  throttling (cell.update 5/s per cell, cost + counts 2/s per job) stays above the backend
+class EventLog(Protocol):
+    async def append(self, job_id: str, type: str, data: dict) -> int     # returns seq
+    async def read_after(self, job_id: str, seq: int) -> list[Event]
+    def subscribe(self, job_id: str, last_event_id: int | None) -> AsyncIterator[Event]   # local: queue; aws: poll read_after every BOB_EVENT_POLL_MS
+
+# core/runner.py (A1)
+class Runner(Protocol):
+    async def start(self, job_id: str, mode: Literal["create", "resync"]) -> None   # local: asyncio task running Orchestrator.run_job; aws: ecs.run_task
+    async def stop(self, job_id: str) -> None                                       # aws: ecs.stop_task (used 10 s after a cancel flag if the task still runs)
+
+# core/backends.py (A1): get_blobs(), get_store(), get_events(), get_runner() pick by BOB_ENV; import bob.aws.* lazily.
+# core/cache.py (A1): real-response cache stored through Blobs under "cache/<sha256>.json".
+```
+`BOB_ENV=local` (default) keeps in-memory state + `runs/` on disk, the in-process asyncio runner and the in-memory event log. `BOB_ENV=aws` switches every backend at once through `core/backends.py`. The orchestrator code is the same in both modes. All checkpoint-1 work and all tests run in local mode first. The aws impls use boto3 inside `asyncio.to_thread` (no aioboto3).
+
+Build loop inside `run_job`, after approval (A1 writes it, calling A3/A4):
 ```
 round 1: for each enabled cell (concurrency WRITER_CONCURRENCY): generate(target * OVERGEN) -> verify -> store rows -> emit
 round 2..MAX_ROUNDS: plan_gap_round() -> generate -> verify     (stop when targets met, budget hit, or MAX_ROUNDS)
@@ -483,12 +571,22 @@ def record(job_id: str, bucket: str, *, calls: int = 1, in_tokens: int = 0, out_
 def frontier_only_estimate(job_id: str) -> float
 
 # orchestrator: seed parsing (A1). G1 stores the upload; A1 parses it.
-def load_seeds(upload_path: Path) -> list[list[Message]]   # JSONL {"messages": [...]} or {"user","assistant"}; CSV columns user,assistant
+def load_seeds(data: bytes, name: str) -> list[list[Message]]   # JSONL {"messages": [...]} or {"user","assistant"}; CSV columns user,assistant
 ```
+`load_seeds` takes bytes, not a path. The seed file lives in Blobs (S3 in aws mode), so no local path exists. The caller gets the bytes from `read_upload(spec.seed_upload_id)`. `name` gives the file extension, which picks the JSONL or CSV parser. A pure function on bytes is also simple to test.
 
 ## 8. SSE events (A1 emits, G4 renders)
 
 Wire format: `id: <seq>\nevent: <type>\ndata: <json>\n\n`. The store keeps every event per job, so a client that reconnects with `Last-Event-ID` gets a replay.
+
+Wire rules (D25; G1 sends, G4 reads):
+- At stream start, send `retry: 1000`.
+- Send a `: ping` comment every `BOB_SSE_HEARTBEAT_S` (15 s). CloudFront cuts an idle stream.
+- Headers: `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `X-Accel-Buffering: no`.
+- The server closes the stream after `BOB_SSE_MAX_S` (840 s). The browser reconnects with `Last-Event-ID` and gets the replay. A closed stream is normal.
+- The client closes the stream only on `done`, `error`, or `job.status cancelled`.
+- In aws mode the SSE route polls `read_after` every `BOB_EVENT_POLL_MS` (500 ms).
+- Single event writer (section 7). Each event item uses a conditional put (`attribute_not_exists(sk)`), so a seq collision fails loudly.
 
 | Event | Data |
 |---|---|
@@ -523,7 +621,21 @@ KEEP_P=0.9  REJECT_P=0.3  AUDIT_RATE=0.02  DEDUP_COS=0.92
 OVERGEN=1.6  MAX_ROUNDS=3  WRITER_BATCH=5
 WRITER_CONCURRENCY=16  JEV_CONCURRENCY=32  SCALEDOWN_CONCURRENCY=16  JUDGE_CONCURRENCY=4
 PRICES: writer $0.10/$0.50, judge+planner $2/$10 per M tokens, jev $0.042/M in, scaledown $0.04/M in   # check at T+0:00
+
+# deployment (D25; A1 adds them to config.py at T+0:15)
+BOB_ENV=local                       # local | aws
+BOB_RUNS_DIR=runs                   # aws: /tmp/runs (Lambda /tmp is the only writable path; ephemeral storage 2 GB)
+BOB_TABLE=bob  BOB_BUCKET=<data bucket>  BOB_SECRET_ARN=<arn of bob/keys>
+BOB_ECS_CLUSTER, BOB_TASK_DEF, BOB_SUBNETS (comma list), BOB_SECURITY_GROUP, BOB_CONTAINER_NAME=worker
+BOB_MAX_WORKERS=2                   # aws runner refuses a new job when 2 tasks run (protects the budget)
+BOB_CONTROL_POLL_S=1  BOB_APPROVAL_WAIT_MINUTES=60
+BOB_EVENT_POLL_MS=500  BOB_SSE_HEARTBEAT_S=15  BOB_SSE_MAX_S=840
+BOB_PUBLIC_URL=<CloudFront URL>     # Composio OAuth redirect target, CORS
+BOB_EMBED_MODEL_PATH=/opt/models/potion-base-8M   # baked into the image; no Hugging Face download at runtime
+# Lambda only (set by CDK): AWS_LWA_INVOKE_MODE=response_stream, AWS_LWA_PORT=8080, AWS_LWA_READINESS_CHECK_PATH=/api/ping
 ```
+
+In aws mode, `config.py` loads the secret JSON from `BOB_SECRET_ARN` into the environment before it reads Settings (helper `bob/aws/secrets.py`, A5). The secret `bob/keys` holds OPENROUTER_API_KEY, SCALEDOWN_API_KEY, FIRECRAWL_API_KEY, COMPOSIO_API_KEY and the other keys. Bedrock uses the IAM role in aws mode, no keys.
 
 Bedrock client: `anthropic.AsyncAnthropicBedrock(aws_region=...)`. Use prompt caching on the Writer system prompt + topic brief (same per cell). Request structured JSON output; on parse failure, retry once, then drop.
 
@@ -536,6 +648,8 @@ Bedrock client: `anthropic.AsyncAnthropicBedrock(aws_region=...)`. Use prompt ca
 ## 11. Export (A4)
 
 Canonical rows -> preset -> format. One data file per folder (ModelForge rule, D9): `runs/<job_id>/export/<preset>/<split>/<split>.<ext>`, for example `export/openai-chat/train/train.jsonl` and `export/openai-chat/eval/eval.jsonl`. Always write `bob_manifest.json` and `provenance.parquet` (row id, cell, coords, spans, checks, confidence) next to the data.
+
+Export writes files only under `settings.runs_dir` (`<runs_dir>/<job_id>/export/...`), never a hard-coded `runs/`. In aws mode the orchestrator then uploads the export tree to S3 with `blobs.upload_tree` (section 7). A4 does not call S3.
 
 | Preset | Row shape |
 |---|---|
@@ -551,8 +665,111 @@ Formats: `jsonl` (required), `json`, `csv`, `parquet` (required). Splits: `train
 
 ## 12. Real-only development contract
 - **No mock clients, no fake responses, no fake corpus.** A failing external call fails loudly with the provider's error in a `log` event and in `/health`.
-- `core/cache.py` stores **real** responses on disk, keyed by sha256 of (endpoint, model, request body). It saves money and time on re-runs. It never invents a response. `BOB_CACHE=0` turns it off for the final demo run if needed.
+- `core/cache.py` stores **real** responses through Blobs (`cache/<sha256>.json`; local: disk, aws: S3), keyed by sha256 of (endpoint, model, request body). It saves money and time on re-runs. It never invents a response. `BOB_CACHE=0` turns it off for the final demo run if needed.
 - `demo/smoke/`: 3 to 5 real pages (Firecrawl scrape of the demo docs, saved as markdown) plus 10 real seed questions, written to disk by G2 at T+0:20. All backend tests run on this corpus with real calls and small sizes (for example `target_rows=20`).
 - `demo/corpus/`: the full real crawl of the demo docs, cached by G2 by T+1:30.
 - Frontend agents build against the real API. Until a route exists, they build the component against the `types.ts` shapes, then connect it the moment the route lands. They never ship hard-coded data.
 - G1 ships `POST /uploads`, `POST /jobs` and the MD parser by T+0:45. A1 delivers a **thin real path** by T+0:50: `POST /jobs` with `SourceSpec(kind="upload")` pointing at the uploaded `demo/smoke/` files -> real chunk -> real Writer -> real Jev check -> rows in the store -> SSE events. All other work hangs on this path.
+- **Cloud thin path (A5).** By T+1:15: the CloudFront URL serves the UI, and `/api/ping` and `/api/health` work there with the current backend code. Checkpoint 1 (T+1:30) includes this cloud health check. By T+2:00: one real job runs in the cloud: create -> Fargate worker -> plan -> approve -> rows on SSE through CloudFront -> file download from S3. Measure the worker cold start here.
+- `demo/` is copied into the image. G2 commits `demo/corpus/` before the checkpoint-2 deploy. Checkpoint 2 (T+2:50) runs the pass test on the CloudFront URL (P0).
+
+## 13. AWS deployment (A5)
+
+Local mode (`BOB_ENV=local`) stays the default. `BOB_ENV=aws` switches every backend at once (section 7). Decision D25.
+
+### Architecture
+```
+ Browser ──► CloudFront (one domain)
+               ├─ default  ──► S3 frontend bucket (React build; CloudFront Function rewrites non-file paths to /index.html)
+               └─ /api/*   ──► Lambda Function URL (invoke mode RESPONSE_STREAM)
+                               API Lambda = FastAPI container + AWS Lambda Web Adapter (short routes + SSE)
+                                  │ create_job / resync ──► ecs.run_task ──► Fargate worker task (one per job)
+                                  │ approve / cancel    ──► control flag in DynamoDB (worker polls it every 1 s)
+                                  └ SSE ◄── polls DynamoDB events every 500 ms
+ Fargate worker = same image, CMD `python -m bob.worker <job_id> <mode>`: ingest -> read -> plan -> wait for approval -> build loop -> report -> export -> done -> exit
+ State:   DynamoDB table `bob` (job summary + control, events, rows)  +  S3 data bucket (job.json, docs, chunks, exports, uploads, cache)
+ Secrets: one Secrets Manager secret `bob/keys` (JSON: OPENROUTER_API_KEY, SCALEDOWN_API_KEY, FIRECRAWL_API_KEY, COMPOSIO_API_KEY, ...). Bedrock uses the IAM role, no keys.
+ Network: default VPC, public subnets, assignPublicIp=ENABLED, egress-only security group (no NAT cost). Lambda outside the VPC.
+ IaC:     AWS CDK v2 in Python, `infra/`. Two stacks: `BobData` (table, data bucket, frontend bucket, secret) and `BobApp` (image, Lambda + URL, ECS cluster + task def, CloudFront, IAM).
+```
+
+### DynamoDB table `bob`
+On-demand. `pk` and `sk` are strings. TTL attribute `expires_at` = 7 days.
+
+| pk | sk | attributes |
+|---|---|---|
+| `JOB#<id>` | `META` | status, counts (JSON), cost_usd, control, plan_key, task_arn, last_seq, updated_at |
+| `JOB#<id>` | `EVT#<seq:08d>` | type, data (JSON string) |
+| `JOB#<id>` | `ROW#<row_id>` | n (insert order), verdict, cell_id, body (Row JSON string) |
+| `JOBS` | `<created_at>#<id>` | summary for `GET /jobs` |
+
+- The full Job document (plan, cells, report) lives in S3 `runs/<id>/job.json`. It can pass the 400 KB item limit.
+- `read_after` = Query with `sk > EVT#<seq>` and `begins_with EVT#`, ConsistentRead.
+- `EVT#` puts use `attribute_not_exists(sk)` (single event writer, section 7).
+
+### S3 data bucket layout (mirrors local `runs/`)
+```
+runs/uploads/<upload_id>/<file>
+runs/<job_id>/job.json
+runs/<job_id>/docs/
+runs/<job_id>/chunks.jsonl
+runs/<job_id>/export/<preset>/<split>/...    + bob_manifest.json, provenance.parquet
+cache/<sha256>.json
+```
+
+### Runtime sizes
+| Part | Size |
+|---|---|
+| API Lambda | 2048 MB, timeout 900 s, x86_64, ephemeral storage 2048 MB, reserved concurrency 20 |
+| Worker task | Fargate 2 vCPU / 4 GB, x86_64, logs to CloudWatch `/bob/worker` |
+| Max workers | `BOB_MAX_WORKERS=2` running tasks |
+
+### IAM
+| Role | Permissions |
+|---|---|
+| Lambda role | DynamoDB + S3 (data bucket) + `ecs:RunTask/StopTask/DescribeTasks` + `iam:PassRole` (task + execution roles) + `secretsmanager:GetSecretValue` + `bedrock:InvokeModel*` (for `/health` and spot-check) |
+| Worker task role | DynamoDB + S3 + secret + `bedrock:InvokeModel`, `bedrock:InvokeModelWithResponseStream` on the inference profiles and the foundation models they route to (all routed regions) |
+
+### CloudFront behaviors
+| Behavior | Origin | Settings |
+|---|---|---|
+| default | S3 frontend bucket | CloudFront Function rewrites non-file paths to `/index.html`. Use this function on the default behavior only. Never use distribution-wide custom error pages (they turn API 404s into index.html). |
+| `/api/*` | Lambda Function URL | CachingDisabled, origin request policy AllViewerExceptHostHeader, all methods, origin read timeout 60 s |
+
+### Image (`backend/Dockerfile`)
+- One image for the API Lambda and the worker. Build context = repo root. Root `.dockerignore`.
+- `python:3.12-slim`, linux/amd64 (build with `--platform linux/amd64`, also on Windows).
+- `pip install ./backend`.
+- Copy the Lambda Web Adapter extension (`public.ecr.aws/awsguru/aws-lambda-adapter`) to `/opt/extensions/`.
+- Bake the model2vec model into `/opt/models/potion-base-8M` (`BOB_EMBED_MODEL_PATH`).
+- Copy `demo/` to `/app/demo`.
+- Default CMD = uvicorn `bob.api.app:app` on port 8080. Fargate overrides CMD to `python -m bob.worker <job_id> <mode>`.
+
+### Deploy and teardown
+```
+# once, before T+0:00
+cdk bootstrap aws://<account>/<region>              # a Bedrock region with Haiku 5.5 + Sonnet 5.5
+aws secretsmanager put-secret-value --secret-id bob/keys --secret-string file://secrets.json   # secrets.json is never committed
+
+# each deploy (from a clean checkout in < 15 min)
+infra/deploy.sh      # npm run build -> cdk deploy --all --require-approval never --outputs-file infra/outputs.json -> print the CloudFront URL
+
+# after the event
+cdk destroy --all    # buckets use DESTROY + autoDeleteObjects
+```
+A5 posts the table, bucket and secret names to all agents after `BobData` deploys. A1 adds them to `.env.example`.
+
+### Limits (Lambda and CloudFront)
+1. The API Lambda has no background work. A task started after the response freezes. Long work goes to the worker only.
+2. Every route returns in < 25 s (CloudFront origin timeout).
+3. Request bodies are <= 6 MB (Lambda limit). P1: `POST /uploads/presign` gives a presigned S3 PUT.
+4. Only `/tmp` is writable in Lambda. No writes outside `BOB_RUNS_DIR` (`/tmp/runs`).
+5. A Lambda response stream ends at 900 s. SSE closes at `BOB_SSE_MAX_S` (840 s) and the browser reconnects.
+6. CloudFront cuts an idle origin connection after the 60 s read timeout. SSE sends `: ping` every 15 s.
+7. A DynamoDB item is <= 400 KB. The full Job document goes to S3.
+8. The Lambda readiness check calls `/api/ping`. It makes no external calls.
+9. Firecrawl and Composio fetch run inside the worker. The worker has no time limit.
+
+### P1 (A5)
+Resync in the worker; origin-secret header (CloudFront adds `X-Bob-Origin`, API middleware rejects calls without it, so nobody can call the Function URL directly); AWS Budgets alarm; presigned uploads; a CloudWatch Logs Insights query for errors.
+Cut line: if the cloud job path fails at T+3:30, demo on localhost and show the deployed UI + `/api/health`.

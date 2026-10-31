@@ -1,7 +1,8 @@
 # Bob the Builder: Master Plan (v4, the data factory)
 
-> Build window: **4 hours** (T+0:00 to T+4:00). Two builders, four coding agents each. Result: a fully working product with **real calls only** (no mocks, no fake data).
-> Interfaces: `CONTRACTS.md`. Reasoning: `DECISIONS.md` (D18 to D24). Agent prompts: `AGENT_BRIEFS.md`. Ideation record: `research/11-data-factory.md`.
+> Build window: **4 hours** (T+0:00 to T+4:00). Two builders, 9 coding agents (Aaditya 5, Gunbir 4). Result: a fully working product with **real calls only** (no mocks, no fake data).
+> Deploy target: AWS serverless (Lambda API + Fargate job workers), CONTRACTS §13 and D25. Local mode stays the default for development.
+> Interfaces: `CONTRACTS.md`. Reasoning: `DECISIONS.md` (D18 to D25). Agent prompts: `AGENT_BRIEFS.md`. Ideation record: `research/11-data-factory.md`.
 > v4 retires templates, question programs, grammar banks and Architect-written generator code.
 
 ## 1. Pitch
@@ -52,7 +53,24 @@ Bob does **not** train models (D20).
 
  Web ──────────────────────────────────────────────────────────────────────────── Gunbir
    FastAPI routes + SSE  ◄──►  React UI: Setup ► Plan ► Build (live map + feed) ► Row inspector ► Report
+
+ Deploy (AWS serverless, CONTRACTS §13, D25) ───────────────────────────────────── Aaditya
+   Browser ──► CloudFront (one domain)
+                 ├─ default ──► S3 frontend bucket (React build; SPA rewrite to /index.html)
+                 └─ /api/*  ──► Lambda Function URL (RESPONSE_STREAM)
+                                FastAPI + Lambda Web Adapter (short routes + SSE)
+                                  │ create_job / resync ──► ecs.run_task ──► Fargate worker (one per job)
+                                  │ approve / cancel    ──► control flag in DynamoDB (worker polls every 1 s)
+                                  └ SSE ◄── polls DynamoDB events every 500 ms
+   Fargate worker: same image, `python -m bob.worker <job_id> <mode>`:
+     ingest ► read ► plan ► wait for approval ► build loop ► report ► export ► exit
+   State:   DynamoDB table `bob` (job summary + control, events, rows) + S3 data bucket (job.json, docs, chunks, exports, uploads, cache)
+   Secrets: Secrets Manager `bob/keys`. Bedrock uses the IAM role (no keys).
+   Network: default VPC, public subnets, egress-only security group, no NAT.
+   IaC:     AWS CDK v2 (Python) in `infra/`, stacks `BobData` + `BobApp`; `infra/deploy.sh` deploys in < 15 min
 ```
+
+Local mode (`BOB_ENV=local`) stays the default for development: in-memory + `runs/` on disk, in-process asyncio runner, in-memory event bus. All checkpoint-1 work and all tests run in local mode first. `BOB_ENV=aws` switches every backend at once through `core/backends.py`. The orchestrator code is the same in both modes.
 
 ## 4. Where Jev and the CDMs work
 
@@ -69,14 +87,15 @@ Real fallbacks (no stubs): Jev -> ScaleDown Classify -> Haiku JSON. Extract -> H
 
 ## 5. Team and agents
 
-### Aaditya: AI and backend logic (agents A1 to A4)
+### Aaditya: AI, backend logic and deployment (agents A1 to A5)
 
 | Agent | Scope | Owns |
 |---|---|---|
-| **A1 Core** | Shared models, config, store, events + SSE log, cost ledger, disk cache of real responses, Bedrock client, orchestrator state machine and build loop | `core/*`, `config.py`, `llm/bedrock.py`, `orchestrator.py`, `pyproject.toml` |
+| **A1 Core** | Shared models, config (with the AWS config vars), backend protocols + local implementations (`blobs`, `store`, `events`, `runner`, `backends` factory), events + SSE log, cost ledger, cache of real responses through `Blobs`, Bedrock client, orchestrator state machine, `run_job` (the full job body, used by both runners) and build loop | `core/*`, `config.py`, `llm/bedrock.py`, `orchestrator.py`, `pyproject.toml` |
 | **A2 Read** | Jev client + fallback chain, ScaleDown client, chunking, filters, embeddings, dedup, triage, topics, evidence index, retriever | `clients/*`, `pipeline/chunk.py filters.py embed.py triage.py topics.py evidence.py` |
 | **A3 Plan + Write** | Planner (coverage map), target allocation, Writer prompts and generation for all 4 case types, gap controller | `pipeline/planner.py generate.py gaps.py`, `pipeline/prompts/planner.md writer*.md` |
 | **A4 Verify + Ship** | 3-tier cascade, judge prompt, DPO pairs, report, presets, formats, manifest; stretch: base-model probing | `pipeline/verify.py report.py probe.py`, `pipeline/prompts/judge.md`, `export/*` |
+| **A5 Deploy** | AWS serverless deployment (CONTRACTS §13): aws implementations of the A1 protocols (boto3 in `asyncio.to_thread`), secrets loader, Fargate worker entry, Docker image with the Lambda Web Adapter, CDK stacks `BobData` + `BobApp`, deploy script; tests on real DynamoDB and S3 (no moto, no LocalStack: D23) | `bob/aws/blobs.py store.py events.py runner.py secrets.py`, `bob/worker.py`, `backend/Dockerfile`, root `.dockerignore`, `infra/**` |
 
 ### Gunbir: frontend and integrations (agents G1 to G4)
 
@@ -87,7 +106,7 @@ Real fallbacks (no stubs): Jev -> ScaleDown Classify -> Haiku JSON. Extract -> H
 | **G3 UI: Setup + Plan** | Vite + React + TS shell, API client, `types.ts`, Setup screen (goal, sources, connectors, uploads, budget), Plan screen (editable coverage map, estimate, Start) | `frontend/src/api/*`, `frontend/src/screens/Setup*`, `Plan*`, app shell |
 | **G4 UI: Build + Results** | Live Build screen (map heatgrid, counters, cost meter, row feed, reject reasons), Row inspector (messages, checks, highlighted source spans), Report screen (charts, spot-check panel, export and downloads) | `frontend/src/screens/Build*`, `Row*`, `Report*`, `frontend/src/components/viz/*` |
 
-Gunbir's agents call the backend only through `Orchestrator` and `fetch_documents()`. Aaditya's agents never touch `api/`, `connectors/` or `frontend/`.
+Gunbir's agents call the backend only through `Orchestrator` and `fetch_documents()`. Aaditya's agents never touch `api/`, `connectors/` or `frontend/`. A5 owns `infra/` and `backend/Dockerfile`. A5 asks A1 for changes to `pyproject.toml` (A1 adds `boto3` at T+0:15).
 
 ## 6. Timeline (4 hours)
 
@@ -99,14 +118,19 @@ Gunbir's agents call the backend only through `Orchestrator` and `fetch_document
 - [ ] Composio key: auth config for Notion (and Jira or Confluence if available); connect one real account.
 - [ ] Demo Notion workspace: 5 to 10 real internal-style pages (support FAQ, escalation policy, known issues) for the demo product.
 - [ ] Repo: `backend/` and `frontend/` folders, branches `aaditya/*` and `gunbir/*`, `.env` shared out of band (never committed).
+- [ ] AWS (A5): choose the AWS account and the Bedrock region (it must have Haiku 5.5 and Sonnet 5.5).
+- [ ] AWS (A5): run `cdk bootstrap aws://<account>/<region>`.
+- [ ] AWS (A5): Docker Desktop runs. Node 20 is installed. Run `npm i -g aws-cdk`.
+- [ ] AWS (A5): a local `secrets.json` holds the API keys (never committed).
 
 ### T+0:00 to T+0:20: Lock
 | Agent | Task |
 |---|---|
-| A1 | `core/models.py` exactly as CONTRACTS §2, `config.py`, `pyproject.toml`, empty `orchestrator.py` with the §7 signatures. Commit by T+0:15. |
+| A1 | `core/models.py` exactly as CONTRACTS §2, `config.py`, `pyproject.toml`, empty `orchestrator.py` with the §7 signatures. Also: protocol stubs + local implementations in `core/blobs.py store.py events.py runner.py backends.py`; the new config vars (CONTRACTS §9); `boto3` in `pyproject.toml`. Commit by T+0:15. |
 | A2 | Jev and ScaleDown clients with real calls; confirm the request and response shapes; write them into CONTRACTS §5 if they differ |
 | A3 | Bedrock call through `llm/bedrock.py` draft (with A1); first Writer prompt tested on the first real smoke page (G2 commits it by T+0:10) |
 | A4 | `prompts/judge.md`; export preset functions (pure code, no external calls) |
+| A5 | CDK app skeleton; deploy `BobData`; set the secret value (`aws secretsmanager put-secret-value --secret-id bob/keys --secret-string file://secrets.json`); post the table, bucket and secret names to all agents (A1 adds them to `.env.example`) |
 | G1 | FastAPI skeleton, `/health` with real key checks, CORS, run script; then `POST /uploads`, `POST /jobs` and the MD parser by T+0:45 (needed for the thin path) |
 | G2 | First real Firecrawl page -> `demo/smoke/` by T+0:10, then 3 to 5 pages total -> `demo/smoke/*.md`; 10 real seed questions -> `demo/smoke/seeds.jsonl` |
 | G3 | Vite + React + TS scaffold, router, layout, `types.ts` from CONTRACTS §2 |
@@ -115,18 +139,20 @@ Gunbir's agents call the backend only through `Orchestrator` and `fetch_document
 ### T+0:20 to T+1:30: Build the core
 | Agent | Deliverable by T+1:30 |
 |---|---|
-| A1 | **Thin real path by T+0:50** (CONTRACTS §12). Then: store with disk persistence, event bus + replay, ledger with frontier-only estimate, full build loop with rounds and budget guard |
+| A1 | **Thin real path by T+0:50** (CONTRACTS §12). Then: local `Store` with disk persistence, local event bus + replay (both behind the protocols that A5 implements for aws), ledger with frontier-only estimate, full build loop with rounds and budget guard |
 | A2 | chunk, filter, embed, dedup, triage, topics with briefs, EvidenceIndex + Retriever; all tested on `demo/smoke/` with real calls |
 | A3 | Planner returns a valid `Plan` for the smoke corpus; Writer works for all 4 case types; batched (5 per call), prompt caching on |
 | A4 | Tier 1 + tier 2 + routing + tier 3 judge working on real candidates; JSONL + Parquet export for `openai-chat` |
+| A5 | `backend/Dockerfile`, `.dockerignore`; `bob/aws/*` against A1's protocols, tested on real DynamoDB and S3; `bob/worker.py`; `BobApp` stack. **By T+1:15:** the CloudFront URL serves the UI, and `/api/ping` + `/api/health` work there with the current backend code |
 | G1 | All routes in CONTRACTS §6 wired to the Orchestrator; SSE with `Last-Event-ID` replay; uploads + parsers for PDF, DOCX, MD, HTML, TXT, CSV |
 | G2 | Firecrawl connector with page progress; Composio connect + browse + fetch for Notion; full demo crawl cached to `demo/corpus/` |
 | G3 | Setup screen (goal, URL, uploads, connector buttons with real OAuth popup, row count, budget, seeds); Plan screen (map editor, notes, estimate, Start) |
 | G4 | Build screen on live SSE: heatgrid, counters, cost meter, row feed with reject reasons |
 
 ### T+1:30: Checkpoint 1 (merge to `main`, 10 minutes)
-**Pass:** In the browser, a user enters a goal + the smoke URL, sees a real plan, clicks Start, watches real rows stream in with real verdicts, and downloads a real JSONL file. No hard-coded data anywhere.
-If it fails: all 8 agents fix the break first; nothing new starts.
+**Pass:** In the browser, a user enters a goal + the smoke URL, sees a real plan, clicks Start, watches real rows stream in with real verdicts, and downloads a real JSONL file. No hard-coded data anywhere. This test runs in local mode.
+**Cloud pass:** the CloudFront URL serves the UI, and `/api/ping` + `/api/health` return real results there.
+If it fails: all 9 agents fix the break first; nothing new starts.
 
 ### T+1:40 to T+2:50: Complete the product
 | Agent | Deliverable by T+2:50 |
@@ -135,22 +161,26 @@ If it fails: all 8 agents fix the break first; nothing new starts.
 | A2 | Real fallback chains tested (force a Jev failure, see ScaleDown Classify take over); triage and evidence quality pass on the full demo corpus |
 | A3 | Gap controller (deficit + rejection-rate boost); persona and difficulty diversity checked by reading 50 real rows; prompt fixes |
 | A4 | DPO pairs, full report, all presets and formats, manifest + provenance.parquet, stratified train/eval split |
+| A5 | Deploy the checkpoint-1 merge. Real job in the cloud: create -> Fargate worker -> plan -> approve -> rows on SSE through CloudFront -> file download from S3. Test SSE reconnect (set `BOB_SSE_MAX_S=60` for one test). Cancel stops the job in 5 s. Measure the worker cold start by T+2:00 |
 | G1 | Error handling: provider errors shown in the UI; `/sources/preview`; job list |
 | G2 | Composio Jira and Confluence (or Google Drive) fetch; `sync.py` diff for re-sync |
 | G3 | Job list / history page; Setup preview of fetched documents; polish |
 | G4 | Row inspector with source span highlights and check list; Report screen with spot-check panel and downloads |
 
 ### T+2:50: Checkpoint 2 (merge, 10 minutes)
-**Pass:** All P0 items (section 8) work end to end on the real demo corpus (Firecrawl site + Notion through Composio): 500+ kept rows, one gap round, report complete, `openai-chat` and `full` downloads open. P1 items finish in T+3:00 to T+3:30.
+**Pass:** All P0 items (section 8) work end to end on the real demo corpus (Firecrawl site + Notion through Composio): 500+ kept rows, one gap round, report complete, `openai-chat` and `full` downloads open. This test runs **on the CloudFront URL** (P0). P1 items finish in T+3:00 to T+3:30.
 
 ### T+3:00 to T+3:30: Hardening and P1 / stretch
 - Everyone: fix bugs found at checkpoint 2.
 - If green: re-sync (P1), base-model probing (stretch, A4), UI polish (G3, G4).
+- A5 (P1): resync mode in the worker; origin-secret header (CloudFront adds `X-Bob-Origin`; the API rejects calls without it, so nobody can call the Function URL directly); AWS Budgets alarm; presigned uploads; a CloudWatch Logs Insights query for errors.
 
 ### T+3:30: Feature freeze
 ### T+3:30 to T+4:00: Ship
+- A5: deploy the frozen `main` (tag `demo`) once. Run the demo job once on the CloudFront URL. Keep localhost as the backup.
 - Full real run of the demo on a fresh job; keep it as the backup job (and screen-record it).
 - README with setup and run steps; rehearse the demo 2 times.
+- After the event: run `cdk destroy --all` (the buckets use DESTROY + autoDeleteObjects).
 
 ## 7. Definition of done at T+3:30 (P0 + P1, all real)
 1. A new user can create a job from a public URL, an uploaded file, and a Notion page in one job.
@@ -161,17 +191,21 @@ If it fails: all 8 agents fix the break first; nothing new starts.
 6. The report shows coverage, pass rates, reject reasons, judge agreement, cost and frontier-only estimate, and the spot-check updates it.
 7. Exports: `openai-chat`, `sharegpt`, `modelforge-chat`, `dpo`, `full` in JSONL and Parquet, plus manifest and provenance.
 8. A real provider failure shows an error or a fallback badge in the UI, and the job does not hang.
+9. Items 1 to 8 work on the CloudFront URL: the API runs on Lambda, each job runs in its own Fargate worker, rows stream on SSE through CloudFront, and downloads come from S3.
+10. `infra/deploy.sh` deploys both stacks from a clean checkout in less than 15 minutes and prints the CloudFront URL.
 
 ## 8. Priorities and cut lines
 | Priority | Items |
 |---|---|
-| **P0** (must work at checkpoint 2) | URL + upload + Notion sources; read pipeline; plan + edit; build with 3-tier verification; at least one gap round; live UI; row inspector; report; JSONL + Parquet in `openai-chat` and `full` |
-| **P1** | Gap round 3; DPO pairs; job list page; Jira + Confluence / Drive; other presets and formats; re-sync; spot-check |
+| **P0** (must work at checkpoint 2) | URL + upload + Notion sources; read pipeline; plan + edit; build with 3-tier verification; at least one gap round; live UI; row inspector; report; JSONL + Parquet in `openai-chat` and `full`; deploy: both stacks, aws backends, worker on Fargate, SSE through the Function URL, checkpoint-2 pass on the CloudFront URL, deploy script |
+| **P1** | Gap round 3; DPO pairs; job list page; Jira + Confluence / Drive; other presets and formats; re-sync; spot-check; deploy: resync in the cloud, origin-secret header, budget alarm, presigned uploads, logs query |
 | **Stretch** | Base-model probing; multi-turn rows |
 
 Cut order if late: stretch -> re-sync -> extra Composio toolkits -> extra presets -> DPO. Never cut verification or the row inspector; they are the product.
+Deploy cut line: if the cloud job path fails at T+3:30, demo on localhost and show the deployed UI + `/api/health`.
 
 ## 9. Demo (3 minutes)
+**Where:** the CloudFront URL (deployed tag `demo`). Backup: localhost.
 **Corpus:** a sponsor's public docs (default: Firecrawl's docs) via Firecrawl, plus 5 to 10 internal-style Notion pages (support FAQ, escalation policy, known issues) via Composio.
 **Goal:** "First-reply support assistant for Firecrawl. Use only our docs. If the docs do not cover it, say so and hand off to a human."
 
@@ -184,7 +218,8 @@ Cut order if late: stretch -> re-sync -> extra Composio toolkits -> extra preset
 7. **2:40 Ship.** Download OpenAI-chat JSONL and the DPO file. "Every row has a provenance record."
 8. **2:55 Close.** "Your docs and internal wiki in, verified training data out."
 
-Keep the backup job from T+3:30 open in a second tab.
+Start the demo job early: the Fargate worker cold start takes 30 to 60 s before the plan shows.
+Keep the backup job from T+3:30 open in a second tab. Keep localhost running as the backup if the cloud path fails.
 
 ## 10. Cost model (estimate, about 1,000 kept rows; check prices before T+0:00)
 | Part | Calls | Estimate |
@@ -197,6 +232,11 @@ Keep the backup job from T+3:30 open in a second tab.
 | Judge (Sonnet 5.5, about 5% routed + 2% audit) | about 120 | about $1.00 |
 | **Total** | | **about $1.70** |
 | Frontier-only (Sonnet writes and judges every candidate) | | about $20 |
+| AWS: Fargate worker (2 vCPU / 4 GB, about $0.10 per hour, about 15 min per job with the approval wait) | 1 task per job | about $0.03 per job |
+| AWS: Lambda, DynamoDB on-demand, S3, CloudFront | | less than $0.01 per job |
+| AWS: Secrets Manager (1 secret) | | $0.40 per month |
+
+AWS idle cost is about zero: no NAT gateway and no always-on task.
 
 ## 11. Risks
 | Risk | Mitigation |
@@ -210,3 +250,11 @@ Keep the backup job from T+3:30 open in a second tab.
 | Firecrawl slow | Crawl cap 25; the demo corpus crawl is cached by T+1:30 (real data, cached) |
 | Integration breaks at checkpoints | Contracts locked at T+0:20; one owner per file; thin real path by T+0:50 |
 | Scope | Cut lines in section 8; freeze at T+3:30 |
+| Fargate cold start (30-60 s) before the plan shows | `stage.progress` "starting worker" event from the API; small image; start the demo job early; measure at T+2:00 |
+| CloudFront cuts an idle SSE stream | `: ping` every 15 s; origin read timeout 60 s; stream ends at 840 s and reconnects with `Last-Event-ID` |
+| SPA fallback hides API errors | CloudFront Function on the default behavior only; never distribution-wide custom error pages (they turn API 404s into index.html) |
+| Bedrock denies the IAM role (works with the user profile only) | `/api/health` on the cloud URL at T+1:15; policy covers the inference profile ARN and the foundation model ARNs in all routed regions |
+| Lambda read-only disk breaks a module that writes to `runs/` | Rule: write only under `BOB_RUNS_DIR`; cloud health + thin path at T+1:15 to T+2:00 finds it |
+| Public URL burns budget | Per-job `budget_usd`, `BOB_MAX_WORKERS=2`, Lambda reserved concurrency 20, AWS Budgets alarm (P1) |
+| Deploy breaks just before the demo | Freeze at T+3:30, deploy tag `demo` once, localhost backup |
+| Docker build on Windows | Build with `--platform linux/amd64`; check Docker Desktop before T+0:00 |
