@@ -9,8 +9,8 @@ Snapshot based on the ownership and timeline in [PLAN.md](../PLAN.md). These are
 | A3 | Planner, writer and gap controller | A1 LLM/models; A2 evidence; G2 smoke corpus | User reports A3 underway; integration readiness unverified. |
 | A4 | Verification, reports and exports | Shared models, writer candidates, evidence and provider clients | User reports A4 underway; integration readiness unverified. |
 | A5 | AWS backends, worker and deployment | A1 protocols; AWS account/bootstrap, Docker, deployment configuration | Assigned in plan; activity and cloud prerequisites unverified. |
-| G1 | API, auth, uploads and parsers | A1 orchestrator and models; upload and job routes unblock thin path | Assigned in plan; activity and route readiness unverified. |
-| G2 | Source connectors and real demo corpus | Provider accounts; a real smoke corpus for A3 and integration | Assigned in plan; activity and corpus readiness unverified. |
+| G1 | API, auth, uploads and parsers | A1 orchestrator and models; upload and job routes unblock thin path | **Verified 2026-10-31 on `gunbir/integration`:** every CONTRACTS §6 route exists (incl. `/health`, `/uploads/presign`), runs on A1's real local core; resync 501 until G2 `sync.py`. 50 G1 tests pass (`test_api*.py`, `test_sse.py`, `test_parsers.py`); fresh-install container boot answers `/api/ping`. Details: [WORKLOG_GUNBIR.md](../WORKLOG_GUNBIR.md). |
+| G2 | Source connectors and real demo corpus | Provider accounts; a real smoke corpus for A3 and integration | **Verified 2026-10-31 on `gunbir/integration`:** Firecrawl crawl/scrape and Composio Notion (read-only, per user) with real calls; `demo/smoke/` (5 pages + 10 seeds), `demo/corpus/` (25 docs pages) and `demo/corpus/notion/` (6 fictional wiki pages). 18 G2 tests pass. Not yet: `sync.py`, Jira / Confluence / Drive (P1). |
 | G3 | Account, setup and plan UI | API contracts, auth configuration and G1 routes | Assigned in plan; activity and UI readiness unverified. |
 | G4 | Build, inspector and report UI | Shared types, SSE, row and report routes | Assigned in plan; activity and UI readiness unverified. |
 
