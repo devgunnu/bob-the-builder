@@ -128,7 +128,8 @@ def _check_required(val: dict, schema: dict) -> None:
 class BedrockClient:
     """LLMClient for one job + role on Bedrock Converse."""
 
-    def __init__(self, job: Job, role: Role, cfg: ModelConfig):
+    def __init__(self, job: Job, role: Role, cfg: ModelConfig, *, use_cache: bool = True):
+        self.use_cache = use_cache  # False: always a real call (verify / health checks)
         self.job = job
         self.role = role
         self.cfg = cfg
@@ -198,7 +199,7 @@ class BedrockClient:
     # ---------- transport ----------
     async def _converse(self, req: dict[str, Any], *, use_cache: bool = True) -> tuple[dict, bool]:
         """(response subset, from_cache). Real call with retries; stores the real response in the cache."""
-        if use_cache:
+        if use_cache and self.use_cache:
             hit = await cache.get(self.endpoint, self.cfg.model_id, req)
             if hit is not None:
                 return hit, True
@@ -232,6 +233,10 @@ class BedrockClient:
         }
         self._record(out["usage"])
         return out, False
+
+    async def _cache_put(self, req: dict, resp: dict) -> None:
+        if self.use_cache:
+            await cache.put(self.endpoint, self.cfg.model_id, req, resp)
 
     def _usage(self, raw: dict) -> Usage:
         return Usage(
@@ -311,10 +316,10 @@ class BedrockClient:
                 raise LLMOutputError(
                     f"{self.cfg.model_id} ({self.role}, json_mode={mode}): no valid JSON after one retry: {e2}"
                 ) from e1
-            await cache.put(self.endpoint, self.cfg.model_id, req, resp)
+            await self._cache_put(req, resp)
             return val, self._usage(resp.get("usage", {}))
         if not cached:
-            await cache.put(self.endpoint, self.cfg.model_id, req, resp)
+            await self._cache_put(req, resp)
         return val, self._usage(resp.get("usage", {}))
 
     async def complete_text(
@@ -327,7 +332,7 @@ class BedrockClient:
         req = self._request(system, messages, cache_prefix, None, None)
         resp, cached = await self._converse(req)
         if not cached:
-            await cache.put(self.endpoint, self.cfg.model_id, req, resp)
+            await self._cache_put(req, resp)
         return self._text(resp), self._usage(resp.get("usage", {}))
 
 
