@@ -14,6 +14,20 @@ const STATUS_TONE: Partial<Record<JobStatus, string>> = {
   awaiting_approval: "text-bob-yellow border-bob-yellow/30",
 };
 
+const STATUS_LABEL: Record<JobStatus, string> = {
+  created: "Starting",
+  ingesting: "Fetching",
+  reading: "Reading",
+  planning: "Planning",
+  awaiting_approval: "Plan ready",
+  building: "Building",
+  filling_gaps: "Filling gaps",
+  reporting: "Reporting",
+  done: "Done",
+  error: "Error",
+  cancelled: "Cancelled",
+};
+
 export function routeFor(job: Job): string {
   if (job.status === "done" || job.status === "reporting") return `/jobs/${job.id}/report`;
   if (["building", "filling_gaps"].includes(job.status)) return `/jobs/${job.id}/build`;
@@ -54,7 +68,7 @@ export default function JobList() {
                     {new Date(j.created_at).toLocaleString()} · {(j.counts.kept ?? 0).toLocaleString()} kept · {usd(j.cost?.total_usd)}
                   </div>
                 </div>
-                <span className={`rounded-full border px-2.5 py-0.5 text-[11px] ${STATUS_TONE[j.status] ?? "border-bob-sky/30 text-bob-sky"}`}>{j.status.replace(/_/g, " ")}</span>
+                <span className={`rounded-full border px-2.5 py-0.5 text-[11px] ${STATUS_TONE[j.status] ?? "border-bob-sky/30 text-bob-sky"}`}>{STATUS_LABEL[j.status] ?? j.status}</span>
               </Link>
             </li>
           ))}

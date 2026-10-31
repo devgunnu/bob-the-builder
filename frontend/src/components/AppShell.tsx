@@ -107,7 +107,7 @@ export function AppShell({ pose = "idle", title, step, status, hasReport, childr
         <div className="flex min-w-0 items-center gap-2">
           <Link to="/" className="flex shrink-0 items-center gap-2" aria-label="Bob home">
             <Bob pose={pose} size={34} float={false} still />
-            <span className="font-display text-[17px] font-extrabold tracking-tight">bob</span>
+            <span className={`font-display text-[17px] font-extrabold tracking-tight ${step ? "hidden sm:inline" : ""}`}>bob</span>
           </Link>
           {title && <span className="hidden min-w-0 truncate text-[13px] text-dim lg:block">/ {title}</span>}
         </div>

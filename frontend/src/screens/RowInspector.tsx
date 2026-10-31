@@ -2,28 +2,11 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { ArrowLeft, CheckCircle2, ExternalLink, Gavel, Loader2, ScanEye, XCircle } from "lucide-react";
 import { api, ApiError } from "../api/client";
-import type { CheckResult, Row, SpanRef } from "../api/types";
+import type { CheckResult, Job, Row, SpanRef } from "../api/types";
 import { AppShell } from "../components/AppShell";
-import { ErrorBanner, Panel, caseLabel, usd, useTitle } from "../components/ui";
+import { ErrorBanner, Panel, caseLabel, checkLabel, usd, useTitle } from "../components/ui";
 
-// Human labels for CONTRACTS section 4 check names.
-const CHECK_LABEL: Record<string, string> = {
-  format: "Format",
-  banned_phrases: "No banned phrases",
-  dedup: "Not a duplicate",
-  numbers: "Numbers appear in the source",
-  "extract.names": "No invented features (ScaleDown Extract)",
-  "jev.cell": "About the right topic",
-  "jev.quality": "Answer quality",
-  "jev.realistic": "Sounds like a real user",
-  "jev.supported": "Every claim is in the passages",
-  "jev.answers": "Resolves the question",
-  "jev.flags_gap": "Flags what the docs don't cover",
-  "jev.not_in_docs": "Docs really don't answer it",
-  "jev.abstains": "Says so and hands off, invents nothing",
-  "jev.contradicted": "Source contradicts the user's assumption",
-  "jev.corrects": "Politely corrects the assumption",
-};
+
 
 const TIER_LABEL = { 1: "code", 2: "Jev + ScaleDown", 3: "judge" } as const;
 
@@ -59,7 +42,7 @@ function CheckItem({ c }: { c: CheckResult }) {
     <li className="py-1.5">
       <div className="flex items-center gap-2 text-[13px]">
         {c.passed ? <CheckCircle2 className="size-4 shrink-0 text-bob-mint" /> : <XCircle className="size-4 shrink-0 text-rose-400" />}
-        <span className="text-white/90">{CHECK_LABEL[c.name] ?? c.name}</span>
+        <span className="text-white/90">{checkLabel(c.name)}</span>
         <span className="ml-auto text-[10.5px] text-dim">{TIER_LABEL[c.tier]}</span>
         {c.score !== null && <span className="font-mono text-[11px] text-dim">{c.score.toFixed(2)}</span>}
       </div>
@@ -91,6 +74,7 @@ export default function RowInspector() {
   const { id, rowId } = useParams();
   const [row, setRow] = useState<Row | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
+  const [job, setJob] = useState<Job | null>(null);
   const nav = useNavigate();
   useTitle("Row");
   useEffect(() => {
@@ -102,12 +86,16 @@ export default function RowInspector() {
     setRow(null);
     api.row(id!, rowId!).then(setRow).catch(setError);
   }, [id, rowId]);
+  // The tracker shows where the job really is (a done job keeps Report open).
+  useEffect(() => {
+    api.getJob(id!).then(setJob).catch(() => undefined);
+  }, [id]);
 
   const kept = row?.verdict === "kept";
   const notInDocs = row?.checks.find((c) => c.name === "jev.not_in_docs");
 
   return (
-    <AppShell pose={row ? (kept ? "idea" : "think") : "think"} title="Row" step="build" status="building">
+    <AppShell pose={row ? (kept ? "idea" : "think") : "think"} title={job?.spec.goal ?? "Row"} step="build" status={job?.status ?? null} hasReport={!!job?.report}>
       <div className="mx-auto max-w-6xl px-4 py-5">
         <Link to={`/jobs/${id}/build`} className="mb-3 inline-flex items-center gap-1 text-[12.5px] text-dim hover:text-white">
           <ArrowLeft className="size-4" /> Back to the build <kbd className="ml-1 rounded border border-line px-1 font-mono text-[10px]">Esc</kbd>
