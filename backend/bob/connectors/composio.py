@@ -68,6 +68,10 @@ class ComposioError(RuntimeError):
     """A Composio step failed. The message is shown to the user."""
 
 
+class ComposioNotConfigured(ComposioError):
+    """COMPOSIO_API_KEY is missing on the server (a setup problem, not the user's)."""
+
+
 class ConnectionNotFound(LookupError):
     """No such connection for this user (also used for another user's connection)."""
 
@@ -79,7 +83,7 @@ class ConnectionNotFound(LookupError):
 def client() -> Composio:
     api_key = os.environ.get("COMPOSIO_API_KEY")
     if not api_key:
-        raise ComposioError("COMPOSIO_API_KEY is not set")
+        raise ComposioNotConfigured("COMPOSIO_API_KEY is not set")
     return Composio(api_key=api_key)
 
 

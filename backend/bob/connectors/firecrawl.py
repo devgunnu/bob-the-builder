@@ -86,6 +86,10 @@ class CrawlError(RuntimeError):
     """A crawl failed. The message is shown to the user."""
 
 
+class FirecrawlNotConfigured(CrawlError):
+    """FIRECRAWL_API_KEY is missing on the server (a setup problem, not the user's)."""
+
+
 @dataclass(frozen=True)
 class CrawledPage:
     url: str
@@ -105,7 +109,7 @@ class CrawlResult:
 def make_client() -> Firecrawl:
     api_key = os.environ.get("FIRECRAWL_API_KEY")
     if not api_key:
-        raise CrawlError("FIRECRAWL_API_KEY is not set")
+        raise FirecrawlNotConfigured("FIRECRAWL_API_KEY is not set")
     return Firecrawl(api_key=api_key)
 
 

@@ -7,13 +7,35 @@ import { Bob, type BobPose } from "./Bob";
 
 // /health makes one real (paid) call per provider (CONTRACTS section 6), so every
 // screen shares one result and it refreshes at most every 5 minutes, only while visible.
+// The last result also survives a page reload (sessionStorage), so reloads stay free.
 const HEALTH_TTL_MS = 5 * 60_000;
+const HEALTH_KEY = "bob.health";
 let healthCache: { at: number; value: Promise<Health> } | null = null;
+function storedHealth(): { at: number; value: Promise<Health> } | null {
+  try {
+    const raw = sessionStorage.getItem(HEALTH_KEY);
+    if (!raw) return null;
+    const { at, health } = JSON.parse(raw) as { at: number; health: Health };
+    return { at, value: Promise.resolve(health) };
+  } catch {
+    return null;
+  }
+}
 function sharedHealth(): Promise<Health> {
+  healthCache ??= storedHealth();
   if (!healthCache || Date.now() - healthCache.at > HEALTH_TTL_MS) {
+    const at = Date.now();
     const value = api.health();
-    healthCache = { at: Date.now(), value };
-    value.catch(() => (healthCache = null)); // retry on the next mount after a failure
+    healthCache = { at, value };
+    value
+      .then((health) => {
+        try {
+          sessionStorage.setItem(HEALTH_KEY, JSON.stringify({ at, health }));
+        } catch {
+          /* storage blocked: the in-memory copy still works */
+        }
+      })
+      .catch(() => (healthCache = null)); // retry on the next mount after a failure
   }
   return healthCache.value;
 }
@@ -49,9 +71,11 @@ function HealthChips() {
       <button
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex items-center gap-1 rounded-full border border-rose-400/30 bg-rose-400/10 px-2.5 py-1 text-[11px] text-rose-300 hover:bg-rose-400/15"
+        className="flex items-center gap-1 whitespace-nowrap rounded-full border border-rose-400/30 bg-rose-400/10 px-2.5 py-1 text-[11px] text-rose-300 hover:bg-rose-400/15"
       >
-        <X className="size-3" /> {bad.length > 2 ? `${bad.length} services` : bad.map(([k]) => k).join(", ")} unavailable
+        <X className="size-3" />
+        <span className="sm:hidden">{bad.length} down</span>
+        <span className="hidden sm:inline">{bad.length > 2 ? `${bad.length} services` : bad.map(([k]) => k).join(", ")} unavailable</span>
       </button>
       {open && (
         <div role="dialog" aria-label="Service errors" className="absolute right-0 top-full z-30 mt-2 w-[min(420px,calc(100vw-2rem))] space-y-2 rounded-2xl border border-line bg-panel-2 p-3 text-left shadow-2xl shadow-black/60">
@@ -130,7 +154,7 @@ interface ShellProps {
 export function AppShell({ pose = "idle", title, step, status, hasReport, children }: ShellProps) {
   return (
     <div className="flex h-full flex-col bg-void text-white">
-      <header className="grid h-14 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-line px-4">
+      <header className="grid h-14 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 border-b border-line px-4 sm:gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <Link to="/" className="flex shrink-0 items-center gap-2" aria-label="Bob home">
             <Bob pose={pose} size={34} float={false} still />
@@ -139,7 +163,7 @@ export function AppShell({ pose = "idle", title, step, status, hasReport, childr
           {title && <span className="hidden min-w-0 truncate text-[13px] text-dim lg:block">/ {title}</span>}
         </div>
         {step ? <Journey current={step} status={status} hasReport={hasReport} /> : <span />}
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex items-center justify-end gap-1 sm:gap-2">
           <HealthChips />
           <Link to="/jobs" title="Your jobs" aria-label="Your jobs" className="grid size-8 place-items-center rounded-full text-dim hover:bg-white/5 hover:text-white">
             <History className="size-4" />

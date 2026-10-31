@@ -165,6 +165,8 @@ const TERMINAL = new Set(["done", "error", "cancelled"]);
  * Subscribe to a job's SSE stream. Each reconnect sends Last-Event-ID. Events are
  * de-duplicated by id. The stream closes only on done, error or cancelled.
  */
+class StreamClosed extends Error {}
+
 export function subscribeJob(jobId: string, onEvent: (e: BobEvent, id: number) => void, onError?: (e: unknown) => void) {
   const ctrl = new AbortController();
   let lastId = -1;
@@ -180,6 +182,8 @@ export function subscribeJob(jobId: string, onEvent: (e: BobEvent, id: number) =
       return fetch(input, { ...init, headers });
     },
     async onopen(res) {
+      // 4xx (unknown job) will not heal on retry; 5xx and network errors may.
+      if (res.status >= 400 && res.status < 500) throw new StreamClosed(`stream ${res.status}`);
       if (!res.ok) throw new Error(`stream ${res.status}`);
     },
     onmessage(msg) {
@@ -201,10 +205,10 @@ export function subscribeJob(jobId: string, onEvent: (e: BobEvent, id: number) =
     },
     onerror(err) {
       onError?.(err);
-      if (String(err).includes("sign in required")) throw err; // stop retrying
+      if (err instanceof StreamClosed) throw err; // stop retrying
       return 1000; // retry after 1 s (matches the server's retry: 1000)
     },
-  });
+  }).catch(() => undefined); // a stopped stream was already reported through onError
 
   return () => ctrl.abort();
 }

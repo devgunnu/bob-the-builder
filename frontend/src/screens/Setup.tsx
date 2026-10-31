@@ -233,6 +233,7 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
   const [preview, setPreview] = useState<{ uri: string; title: string; chars: number }[] | null>(null);
   const [capped, setCapped] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  const [previewError, setPreviewError] = useState<ApiError | null>(null);
   const uploads = useUploads();
   const seeds = useUploads();
   const [connectors, setConnectors] = useState<ConnectorState[] | null>(null);
@@ -249,6 +250,10 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
   const [overrideModels, setOverrideModels] = useState(false);
   useTitle("New dataset");
   const firstFiles = useRef(initialFiles);
+  const errorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [error]);
 
   useEffect(() => {
     api.me().then(setMe).catch(() => undefined);
@@ -303,13 +308,13 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
   const doPreview = async () => {
     if (!url.trim()) return;
     setPreviewing(true);
-    setError(null);
+    setPreviewError(null);
     try {
       const r = await api.previewSource({ kind: "url", url: url.trim(), crawl_limit: crawlLimit });
       setPreview(r.documents);
       setCapped(r.capped);
     } catch (e) {
-      setError(e as ApiError);
+      setPreviewError(e as ApiError);
     } finally {
       setPreviewing(false);
     }
@@ -323,7 +328,7 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
 
   const pickedApps = Object.values(connected).filter((c): c is Connected => !!c && c.picked.length > 0);
   const added: { key: string; label: string; remove: () => void }[] = [
-    ...(url.trim() ? [{ key: "url", label: url.replace(/^https?:\/\//, ""), remove: () => setUrl("") }] : []),
+    ...(url.trim() ? [{ key: "url", label: url.replace(/^https?:\/\//, ""), remove: () => (setUrl(""), setPreview(null), setPreviewError(null)) }] : []),
     ...(uploads.files.length ? [{ key: "files", label: `${uploads.files.length} file${uploads.files.length > 1 ? "s" : ""}`, remove: () => uploads.files.forEach((f) => uploads.remove(f.id)) }] : []),
     ...pickedApps.map((c) => ({
       key: c.toolkit,
@@ -351,12 +356,6 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line px-4 py-3 text-[13px] text-dim">
           <span>Don't have documents handy? Try Bob with sample support docs.</span>
           <Button tone="ghost" busy={uploads.busy} onClick={addSample}>Use sample docs</Button>
-        </div>
-      )}
-
-      {error && (
-        <div className="mb-4">
-          <ErrorBanner error={error} />
         </div>
       )}
 
@@ -388,7 +387,7 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
                 <Link2 className="size-4 text-dim" />
                 <input
                   value={url}
-                  onChange={(e) => (setUrl(e.target.value), setPreview(null))}
+                  onChange={(e) => (setUrl(e.target.value), setPreview(null), setPreviewError(null))}
                   placeholder="https://docs.yourproduct.com"
                   className="w-full bg-transparent py-2.5 text-[14px] outline-none placeholder:text-dim"
                 />
@@ -405,6 +404,7 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
                   </button>
                 )}
               </div>
+              {previewError && <div className="mt-2"><ErrorBanner error={previewError} title="Couldn't preview this site" /></div>}
               {preview && capped && <div className="mt-2 text-[12px] text-dim">Showing the first pages only. The job reads up to {crawlLimit}.</div>}
               {preview && (
                 <ul className="scroll-thin mt-2 max-h-40 space-y-0.5 overflow-y-auto">
@@ -510,6 +510,12 @@ export function SetupScreen({ goal, composer, initialFiles = [] }: { goal: strin
       </motion.div>
 
       <motion.div {...rise(4)} className="mt-6">
+        {/* next to the button, so the reason is on screen wherever the user pressed it */}
+        {error && (
+          <div ref={errorRef} className="mb-3 scroll-mt-4">
+            <ErrorBanner error={error} title={error.status === 412 ? "One step before you start" : error.status === 0 ? "Almost ready" : "Couldn't draft the plan"} />
+          </div>
+        )}
         <Button tone="yellow" className="w-full py-3 text-[16px]" busy={creating} disabled={!ready} onClick={create}>
           Draft the plan
         </Button>

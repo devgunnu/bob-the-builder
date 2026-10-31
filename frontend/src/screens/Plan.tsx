@@ -7,7 +7,7 @@ import type { Axis, Cell, Plan, StageName } from "../api/types";
 import { useJobStream, type JobStream } from "../api/useJobStream";
 import { AppShell } from "../components/AppShell";
 import { Bob } from "../components/Bob";
-import { Button, CASE_INFO, CaseHeader, ConfirmButton, ErrorBanner, Label, caseLabel, usd, useTitle } from "../components/ui";
+import { Button, CASE_INFO, CaseHeader, ConfirmButton, ErrorBanner, JobLoadError, Label, caseLabel, usd, useTitle } from "../components/ui";
 
 function readingPose(stage: StageName | null): "read" | "think" {
   return ["fetch", "triage", "evidence"].includes(stage ?? "") ? "read" : "think";
@@ -364,7 +364,7 @@ export default function PlanScreen() {
   return (
     <AppShell pose={s.plan ? "idea" : readingPose(s.lastStage)} title={s.job?.spec.goal} step="plan" status={s.status} hasReport={!!s.report}>
       {s.loadError ? (
-        <div className="mx-auto max-w-3xl p-6"><ErrorBanner error={s.loadError} title="Couldn't load this job" /></div>
+        <JobLoadError error={s.loadError} />
       ) : s.plan ? (
         <PlanEditor key={s.plan.cells.length} s={s} jobId={id!} />
       ) : !s.job ? (

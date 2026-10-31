@@ -7,7 +7,7 @@ import type { PresetInfo, Report, Row } from "../api/types";
 import { useJobStream } from "../api/useJobStream";
 import { AppShell } from "../components/AppShell";
 import { Bob } from "../components/Bob";
-import { Button, Empty, ErrorBanner, Panel, caseLabel, checkLabel, pct, usd, useTitle } from "../components/ui";
+import { Button, Empty, ErrorBanner, JobLoadError, Panel, caseLabel, checkLabel, pct, usd, useTitle } from "../components/ui";
 import { Bars } from "../components/viz/Bars";
 import { Heatgrid, type GridCell } from "../components/viz/Heatgrid";
 
@@ -202,10 +202,16 @@ export default function ReportScreen() {
     ["export", "Other formats"],
   ];
 
+  if (s.loadError)
+    return (
+      <AppShell pose="idle" step="report">
+        <JobLoadError error={s.loadError} />
+      </AppShell>
+    );
+
   return (
     <AppShell pose={r ? "hero" : "idle"} title={s.job?.spec.goal} step="report" status={s.status} hasReport={!!r}>
       <div className="mx-auto max-w-5xl px-4 py-8">
-        <ErrorBanner error={s.loadError} title="Couldn't load this job" />
         {!r ? (
           <Empty>
             <Bob pose="idle" size={110} float={false} still />
